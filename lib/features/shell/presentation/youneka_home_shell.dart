@@ -20,52 +20,56 @@ class YounekaHomeShell extends StatefulWidget {
 
 class _YounekaHomeShellState extends State<YounekaHomeShell> {
   static const double _railWidth = 74;
+  static const double _panelMin = 260;
+  static const double _panelMax = 420;
+  static const double _railPeek = 22; // bagian rail yang tetap terlihat saat panel ditutup
 
   late int _selectedIndex;
-  double _panelVisibleWidth = 0;
+  double _panelSlide = 0; // 0 = tertutup, panelWidth = terbuka penuh
   bool _isDraggingSidebar = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _panelVisibleWidth = 0;
+    _panelSlide = 0;
   }
 
   void _onSidebarDragStart(DragStartDetails _) {
     _isDraggingSidebar = true;
   }
 
-  void _onSidebarDragUpdate(DragUpdateDetails details, double maxPanelWidth) {
+  void _onSidebarDragUpdate(DragUpdateDetails details, double panelWidth) {
     setState(() {
-      // Geser kiri: panel kanan terbuka mengikuti geseran user.
-      _panelVisibleWidth = (_panelVisibleWidth - details.delta.dx).clamp(
+      // Geser kiri (delta negatif) menambah slide sehingga panel bergeser masuk,
+      // tapi lebar panel tetap konstan agar isi tidak reflow.
+      _panelSlide = (_panelSlide - details.delta.dx).clamp(
         0.0,
-        maxPanelWidth,
+        panelWidth,
       );
     });
   }
 
-  void _onSidebarDragEnd(DragEndDetails details, double maxPanelWidth) {
+  void _onSidebarDragEnd(DragEndDetails details, double panelWidth) {
     _isDraggingSidebar = false;
     final velocityX = details.primaryVelocity ?? 0;
-    final snapOpenWidth = maxPanelWidth;
-    final midpoint = snapOpenWidth * 0.45;
+    final snapOpen = panelWidth;
+    final midpoint = snapOpen * 0.45;
     setState(() {
       if (velocityX < -180) {
-        _panelVisibleWidth = snapOpenWidth;
+        _panelSlide = snapOpen;
       } else if (velocityX > 180) {
-        _panelVisibleWidth = 0;
+        _panelSlide = 0;
       } else {
-        _panelVisibleWidth = _panelVisibleWidth >= midpoint ? snapOpenWidth : 0;
+        _panelSlide = _panelSlide >= midpoint ? snapOpen : 0;
       }
     });
   }
 
-  void _toggleSidebarPanel(double maxPanelWidth) {
-    final snapOpenWidth = maxPanelWidth;
+  void _toggleSidebarPanel(double panelWidth) {
+    final snapOpen = panelWidth;
     setState(() {
-      _panelVisibleWidth = _panelVisibleWidth <= 1 ? snapOpenWidth : 0;
+      _panelSlide = _panelSlide <= 1 ? snapOpen : 0;
     });
   }
 
@@ -74,68 +78,81 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxPanelWidth = (constraints.maxWidth - _railWidth).clamp(
-            0.0,
-            double.infinity,
-          ).toDouble();
-          final settledPanelWidth = _panelVisibleWidth.clamp(
-            0.0,
-            maxPanelWidth,
-          );
-          final isPanelOpen = settledPanelWidth > 1;
+          // Panel maksimum 40% layar (dibatasi 260–420 px).
+          double panelWidth = (constraints.maxWidth * 0.4)
+              .clamp(_panelMin, _panelMax)
+              .toDouble();
+          final maxAllowed = (constraints.maxWidth - _railPeek)
+              .clamp(0.0, double.infinity)
+              .toDouble();
+          if (panelWidth > maxAllowed) {
+            panelWidth = maxAllowed;
+          }
+          final slideAmount = _panelSlide.clamp(0.0, panelWidth);
+          final isPanelOpen = slideAmount > 1;
+          final double closedOffset = panelWidth - _railPeek;
+          final double panelTranslateX = closedOffset - slideAmount;
 
           return Stack(
             children: [
-              Positioned.fill(
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                right: _railPeek, // sisakan ruang kecil untuk peek rail saat tutup
                 child: IndexedStack(
                   index: _selectedIndex,
                   children: widget.pages,
                 ),
               ),
-              AnimatedPositioned(
-                duration: _isDraggingSidebar
-                    ? Duration.zero
-                    : const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
+              // Rail + panel satu grup, bergerak bersama.
+              Positioned(
                 top: 0,
                 bottom: 0,
                 right: 0,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragStart: _onSidebarDragStart,
-                  onHorizontalDragUpdate: (details) =>
-                      _onSidebarDragUpdate(details, maxPanelWidth),
-                  onHorizontalDragEnd: (details) =>
-                      _onSidebarDragEnd(details, maxPanelWidth),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _YounekaRightSidebar(
-                        selectedIndex: _selectedIndex,
-                        isPanelOpen: isPanelOpen,
-                        onSelect: (index) =>
-                            setState(() => _selectedIndex = index),
-                        onActionTap: widget.onSidebarAction,
-                        onMentorTap: widget.onMentorTap,
-                        onTogglePanel: () => _toggleSidebarPanel(maxPanelWidth),
-                      ),
-                      AnimatedContainer(
-                        duration: _isDraggingSidebar
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        width: settledPanelWidth,
-                        height: double.infinity,
-                        child: ClipRect(
-                          child: settledPanelWidth <= 0
-                              ? const SizedBox.shrink()
-                              : _SidebarSlidePanel(
-                                  onActionTap: widget.onSidebarAction,
-                                ),
+                width: _railWidth + panelWidth,
+                child: AnimatedContainer(
+                  duration: _isDraggingSidebar
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  transform: Matrix4.identity()..translate(panelTranslateX),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragStart: _onSidebarDragStart,
+                    onHorizontalDragUpdate: (details) =>
+                        _onSidebarDragUpdate(details, panelWidth),
+                    onHorizontalDragEnd: (details) =>
+                        _onSidebarDragEnd(details, panelWidth),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.max,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: _railWidth,
+                          child: _YounekaRightSidebar(
+                            selectedIndex: _selectedIndex,
+                            isPanelOpen: isPanelOpen,
+                            onSelect: (index) =>
+                                setState(() => _selectedIndex = index),
+                            onActionTap: widget.onSidebarAction,
+                            onMentorTap: widget.onMentorTap,
+                            onTogglePanel: () =>
+                                _toggleSidebarPanel(panelWidth),
+                          ),
                         ),
-                      ),
-                    ],
+                        SizedBox(
+                          width: panelWidth,
+                          child: ClipRect(
+                            child: slideAmount <= 0
+                                ? const SizedBox.shrink()
+                                : _SidebarSlidePanel(
+                                    onActionTap: widget.onSidebarAction,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
