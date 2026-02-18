@@ -1,0 +1,281 @@
+      start: _selectedTime!,
+      end: _selectedEndTime!,
+      durationMinutes: _durationMinutes,
+      context: context,
+    );
+    final dueAt = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
+    );
+    Navigator.pop(
+      context,
+      _PlanSheetResult(title: title, timeLabel: timeLabel, dueAt: dueAt),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final startText = _selectedTime?.format(context) ?? '--:--';
+    final endText = _selectedEndTime?.format(context) ?? '--:--';
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 16,
+        bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.task == null ? 'Tambah rencana' : 'Edit rencana',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: _andrewInk,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Template cepat',
+            style: textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: _andrewMutedStrong,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _templates
+                  .map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              t.label,
+                              style: textTheme.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              t.description,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: _andrewMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                        selected: _titleController.text == t.label &&
+                            _durationMinutes == t.durationMinutes,
+                        onSelected: (_) => _applyTemplate(t),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _titleController,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(labelText: 'Judul tugas'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Durasi',
+            style: textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: _andrewMutedStrong,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _andrewBorder),
+              color: _andrewSurfaceElevated,
+            ),
+            child: Column(
+              children: [
+                _GoogleStyleTimeline(
+                  start: _selectedTime,
+                  end: _selectedEndTime,
+                  onSelectHour: (hour) {
+                    final start = TimeOfDay(hour: hour, minute: 0);
+                    final end = _addMinutes(start, _durationMinutes);
+                    setState(() {
+                      _selectedTime = start;
+                      _selectedEndTime = end;
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _pickTime,
+                  icon: const Icon(Icons.access_time_rounded),
+                  label: Text('$startText → $endText (${_durationMinutes}m)'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: _selectedTime ?? TimeOfDay.now(),
+                          );
+                          if (picked == null) return;
+                          final end = _addMinutes(picked, _durationMinutes);
+                          setState(() {
+                            _selectedTime = picked;
+                            _selectedEndTime = end;
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(startText),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: _andrewMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime:
+                                _selectedEndTime ??
+                                _selectedTime ??
+                                TimeOfDay.now(),
+                          );
+                          if (picked == null) return;
+                          final duration = _diffMinutes(
+                            _selectedTime ?? picked,
+                            picked,
+                          );
+                          setState(() {
+                            _selectedEndTime = picked;
+                            _durationMinutes = duration;
+                            _durationController.text = duration.toString();
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(endText),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate,
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 365),
+                      ),
+                      lastDate: DateTime.now().add(
+                        const Duration(days: 365 * 2),
+                      ),
+                    );
+                    if (picked != null && mounted) {
+                      setState(() => _selectedDate = picked);
+                    }
+                  },
+                  icon: const Icon(Icons.calendar_today_rounded),
+                  label: Text(
+                    '${_selectedDate.day.toString().padLeft(2, '0')} '
+                    '${_monthLabel(_selectedDate.month)} ${_selectedDate.year}',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _andrewInk,
+                    side: BorderSide(color: _andrewTeal.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text('Batal'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _submit,
+                  child: Text(widget.task == null ? 'Tambah' : 'Simpan'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildTimeLabel({
+    required TimeOfDay start,
+    required TimeOfDay end,
+    required int durationMinutes,
+    required BuildContext context,
+  }) {
+    final startStr = start.format(context);
+    final endStr = end.format(context);
+    return '$startStr - $endStr (${durationMinutes}m)';
+  }
+
+  int? _extractDuration(String? timeLabel) {
+    if (timeLabel == null) return null;
