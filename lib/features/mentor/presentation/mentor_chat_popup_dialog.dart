@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+const Color _appWhite = Color(0xFFFAFDFF);
+
 class MentorChatPopupDialog extends StatefulWidget {
   const MentorChatPopupDialog({super.key});
 
@@ -165,7 +167,7 @@ class _MentorChatPopupDialogState extends State<MentorChatPopupDialog> {
                               Text(
                                 'Mentor Andrew',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: _appWhite,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -182,7 +184,7 @@ class _MentorChatPopupDialogState extends State<MentorChatPopupDialog> {
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded, color: Colors.white),
+                          icon: const Icon(Icons.close_rounded, color: _appWhite),
                         ),
                       ],
                     ),
@@ -225,7 +227,7 @@ class _MentorChatPopupDialogState extends State<MentorChatPopupDialog> {
                                       decoration: InputDecoration(
                                         hintText: 'Tulis pesan untuk Andrew...',
                                         filled: true,
-                                        fillColor: Colors.white,
+                                        fillColor: _appWhite,
                                         contentPadding: const EdgeInsets.symmetric(
                                           horizontal: 14,
                                           vertical: 10,
@@ -280,7 +282,7 @@ class _MentorChatPopupDialogState extends State<MentorChatPopupDialog> {
                               width: width * 0.8,
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: _appWhite,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: const Color(0xFFD5E1F1)),
                                 boxShadow: const [
@@ -368,7 +370,7 @@ class _MentorCoachMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final alignment = isAndrew ? Alignment.centerLeft : Alignment.centerRight;
-    final background = isAndrew ? Colors.white : const Color(0xFFDCE8FF);
+    final background = isAndrew ? _appWhite : const Color(0xFFDCE8FF);
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -416,4 +418,3 @@ class _MentorCoachMessage extends StatelessWidget {
     );
   }
 }
-

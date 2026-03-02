@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+const Color _appWhite = Color(0xFFFAFDFF);
+
 class YounekaHomeShell extends StatefulWidget {
   const YounekaHomeShell({
     super.key,
@@ -20,8 +22,6 @@ class YounekaHomeShell extends StatefulWidget {
 
 class _YounekaHomeShellState extends State<YounekaHomeShell> {
   static const double _railWidth = 74;
-  static const double _panelMin = 260;
-  static const double _panelMax = 420;
   static const double _railPeek = 22; // bagian rail yang tetap terlihat saat panel ditutup
 
   late int _selectedIndex;
@@ -79,18 +79,15 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           // Panel maksimum 40% layar (dibatasi 260–420 px).
-          double panelWidth = (constraints.maxWidth * 0.4)
-              .clamp(_panelMin, _panelMax)
-              .toDouble();
-          final maxAllowed = (constraints.maxWidth - _railPeek)
+          final double panelWidth = (constraints.maxWidth - _railWidth)
               .clamp(0.0, double.infinity)
               .toDouble();
-          if (panelWidth > maxAllowed) {
-            panelWidth = maxAllowed;
-          }
           final slideAmount = _panelSlide.clamp(0.0, panelWidth);
           final isPanelOpen = slideAmount > 1;
-          final double closedOffset = panelWidth - _railPeek;
+          final double closedOffset = (panelWidth - _railPeek).clamp(
+            0.0,
+            panelWidth,
+          );
           final double panelTranslateX = closedOffset - slideAmount;
 
           return Stack(
@@ -308,7 +305,7 @@ class _YounekaRightSidebar extends StatelessWidget {
               onSelected: (value) {
                 onActionTap(value);
               },
-              color: Colors.white,
+              color: _appWhite,
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'settings', child: Text('Pengaturan')),
                 PopupMenuItem(value: 'import', child: Text('Import data')),
@@ -318,13 +315,13 @@ class _YounekaRightSidebar extends StatelessWidget {
               child: const SizedBox(
                 width: 56,
                 height: 44,
-                child: Icon(Icons.menu_rounded, color: Colors.white, size: 22),
+                child: Icon(Icons.menu_rounded, color: _appWhite, size: 22),
               ),
             ),
             Container(
               width: 36,
               height: 1,
-              color: Colors.white.withValues(alpha: 0.35),
+              color: _appWhite.withValues(alpha: 0.35),
             ),
             const SizedBox(height: 10),
             const _RailMissionText(),
@@ -335,7 +332,7 @@ class _YounekaRightSidebar extends StatelessWidget {
                 isPanelOpen
                     ? Icons.chevron_right_rounded
                     : Icons.chevron_left_rounded,
-                color: Colors.white.withValues(alpha: 0.9),
+                color: _appWhite.withValues(alpha: 0.9),
                 size: 34,
               ),
             ),
@@ -364,7 +361,7 @@ class _YounekaRightSidebar extends StatelessWidget {
             Container(
               width: 36,
               height: 1,
-              color: Colors.white.withValues(alpha: 0.35),
+              color: _appWhite.withValues(alpha: 0.35),
             ),
             const SizedBox(height: 10),
             _RailNavButton(
@@ -394,7 +391,7 @@ class _RailMissionText extends StatelessWidget {
             child: Text(
               l,
               style: const TextStyle(
-                color: Colors.white,
+                color: _appWhite,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 1.2,
               ),
@@ -428,15 +425,15 @@ class _RailNavButton extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             color: selected
-                ? Colors.white.withValues(alpha: 0.18)
+                ? _appWhite.withValues(alpha: 0.18)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
             icon,
             color: selected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.92),
+                ? _appWhite
+                : _appWhite.withValues(alpha: 0.92),
             size: 21,
           ),
         ),
@@ -464,7 +461,7 @@ class _PanelActionChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _appWhite,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: const Color(0xFFD5DFF2)),
         ),
@@ -506,7 +503,7 @@ class _PanelTemplateCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _appWhite,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFD9E3F6)),
       ),

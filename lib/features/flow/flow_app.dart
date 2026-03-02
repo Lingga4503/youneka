@@ -11,6 +11,8 @@ import '../../core/services/plan_template_bridge.dart';
 import '../mentor/presentation/mentor_chat_popup_dialog.dart';
 import '../shell/presentation/youneka_home_shell.dart';
 
+const Color _appWhite = Color(0xFFFAFDFF);
+
 enum ResizeHandlePosition { topLeft, topRight, bottomLeft, bottomRight }
 
 enum SpawnDirection { top, right, bottom, left }
@@ -271,7 +273,7 @@ class _ConnectionBadge extends StatelessWidget {
       child: const Icon(
         Icons.arrow_outward_rounded,
         size: 14,
-        color: Colors.white,
+        color: _appWhite,
       ),
     );
   }
@@ -404,7 +406,7 @@ class _SpawnMenuCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       elevation: 12,
-      color: Colors.white,
+      color: _appWhite,
       borderRadius: BorderRadius.circular(16),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 220),
@@ -512,7 +514,7 @@ class _SpawnMenuItem extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: border, width: 1.2),
-          color: Colors.white,
+          color: _appWhite,
         ),
         child: Icon(type.icon, size: 22, color: iconColor),
       ),
@@ -1177,7 +1179,7 @@ class _PreviewNode extends StatelessWidget {
               node.label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.white,
+                color: _appWhite,
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
               ),
@@ -1196,7 +1198,7 @@ class _PreviewNode extends StatelessWidget {
               node.label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.white,
+                color: _appWhite,
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
               ),
@@ -1215,7 +1217,7 @@ class _PreviewNode extends StatelessWidget {
               node.label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.white,
+                color: _appWhite,
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
               ),
@@ -1390,7 +1392,7 @@ const Map<FlowNodeType, FlowNodeStyle> _styles = <FlowNodeType, FlowNodeStyle>{
     fillColor: Color(0xFF34D399),
     borderColor: Color(0xFF059669),
     shape: FlowShape.stadium,
-    textColor: Colors.white,
+    textColor: _appWhite,
     borderRadius: 32,
   ),
   FlowNodeType.process: FlowNodeStyle(
@@ -1667,7 +1669,7 @@ class _SpawnHandle extends StatelessWidget {
             width: _size,
             height: _size,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _appWhite,
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xFF4F46E5), width: 1.6),
               boxShadow: const [
@@ -1791,7 +1793,7 @@ class _ResizeHandle extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _appWhite,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: const Color(0xFF4F46E5), width: 2),
             boxShadow: const [
@@ -1856,19 +1858,19 @@ class _AndrewAppState extends State<AndrewApp> {
           scaffoldBackgroundColor: _andrewCream,
           useMaterial3: true,
           appBarTheme: const AppBarTheme(
-            backgroundColor: Colors.white,
+            backgroundColor: _appWhite,
             foregroundColor: _andrewInk,
             elevation: 0,
             surfaceTintColor: Colors.transparent,
           ),
           cardTheme: const CardThemeData(
-            color: Colors.white,
+            color: _appWhite,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
           ),
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
-            fillColor: Colors.white,
+            fillColor: _appWhite,
             hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
             prefixIconColor: const Color(0xFF94A3B8),
             border: OutlineInputBorder(
@@ -1879,7 +1881,7 @@ class _AndrewAppState extends State<AndrewApp> {
           filledButtonTheme: FilledButtonThemeData(
             style: FilledButton.styleFrom(
               backgroundColor: _andrewTeal,
-              foregroundColor: Colors.white,
+              foregroundColor: _appWhite,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               textStyle: textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w600,
@@ -1890,7 +1892,7 @@ class _AndrewAppState extends State<AndrewApp> {
             ),
           ),
           navigationBarTheme: NavigationBarThemeData(
-            backgroundColor: Colors.white,
+            backgroundColor: _appWhite,
             indicatorColor: _andrewSoftTeal,
             height: 72,
             labelTextStyle: MaterialStateProperty.resolveWith((states) {
@@ -2106,7 +2108,7 @@ class _AndrewHomeHeader extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.auto_awesome_rounded,
-                  color: Colors.white,
+                  color: _appWhite,
                   size: 28,
                 ),
               ),
@@ -2231,7 +2233,7 @@ class _AndrewFocusCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _appWhite,
           borderRadius: BorderRadius.circular(24),
           boxShadow: const [
             BoxShadow(
@@ -2602,7 +2604,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                         width: 40,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: _appWhite,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFCAD6EA)),
                         ),
@@ -2705,7 +2707,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                               decoration: BoxDecoration(
                                 color: selected
                                     ? const Color(0xFF4A72B8)
-                                    : Colors.white,
+                                    : _appWhite,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: const Color(0xFFC9D6EA),
@@ -2716,7 +2718,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                                 '${day.day}',
                                 style: TextStyle(
                                   color: selected
-                                      ? Colors.white
+                                      ? _appWhite
                                       : const Color(0xFF243348),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 16 / 2,
@@ -2828,7 +2830,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              color: Colors.white,
+                                              color: _appWhite,
                                               fontWeight: FontWeight.w700,
                                               fontSize: 26 / 2,
                                             ),
@@ -3057,7 +3059,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                         child: const Text(
                           'New',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: _appWhite,
                             fontWeight: FontWeight.w700,
                             fontSize: 12,
                           ),
@@ -3127,7 +3129,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                     onPressed: _submit,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF1D4ED8),
-                      foregroundColor: Colors.white,
+                      foregroundColor: _appWhite,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
                         vertical: 12,
@@ -3318,7 +3320,7 @@ class _CoachMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final alignment = isAndrew ? Alignment.centerLeft : Alignment.centerRight;
     final background = isAndrew
-        ? Colors.white
+        ? _appWhite
         : _andrewSoftTeal.withOpacity(0.8);
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
@@ -3379,7 +3381,7 @@ class _CoachPrompt extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _appWhite,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
@@ -3509,7 +3511,7 @@ class _AndrewStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _appWhite,
         borderRadius: BorderRadius.circular(22),
         boxShadow: const [
           BoxShadow(
@@ -3576,7 +3578,7 @@ class _AndrewStreakTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _appWhite,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
@@ -3690,7 +3692,7 @@ class _TemplateCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _appWhite,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: const [
@@ -4194,7 +4196,7 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: _appWhite,
           title: const Text('Data diagram (JSON)'),
           content: SizedBox(width: 480, child: SelectableText(encoded)),
           actions: [
@@ -4498,7 +4500,7 @@ class EditorRail extends StatelessWidget {
       width: 76,
       margin: const EdgeInsets.only(left: 12, top: 20, bottom: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _appWhite,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const [
