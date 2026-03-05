@@ -11,7 +11,15 @@ import '../../core/services/plan_template_bridge.dart';
 import '../mentor/presentation/mentor_chat_popup_dialog.dart';
 import '../shell/presentation/youneka_home_shell.dart';
 
-const Color _appWhite = Color(0xFFFAFDFF);
+const Color _appWhite = Color(0xFFF8FBFF);
+const Color _matchaInk = Color(0xFF16233A);
+const Color _matchaDeep = Color(0xFF274976);
+const Color _matchaOlive = Color(0xFF5E86C8);
+const Color _matchaGold = Color(0xFF9FBDE7);
+const Color _matchaCream = Color(0xFFF0F6FD);
+const Color _matchaMist = Color(0xFFDDE8F6);
+const Color _matchaSoft = Color(0xFFC5D8F1);
+const Color _matchaMuted = Color(0xFF7187A6);
 
 enum ResizeHandlePosition { topLeft, topRight, bottomLeft, bottomRight }
 
@@ -73,7 +81,7 @@ class FlowNodeWidget extends StatelessWidget {
     final Color borderColor = isConnectionSource
         ? const Color(0xFF22C55E)
         : isSelected
-        ? const Color(0xFF4F46E5)
+        ? _matchaDeep
         : style.borderColor;
 
     final TextStyle textStyle =
@@ -193,7 +201,7 @@ class FlowNodeWidget extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isSelected
-                ? const Color(0x224F46E5)
+                ? const Color(0x2256661F)
                 : Colors.black.withValues(alpha: 0.08),
             blurRadius: isSelected ? 20 : 12,
             offset: const Offset(0, 8),
@@ -434,9 +442,9 @@ class _SpawnMenuCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    color: const Color(0xFFEFF2FF),
+                    color: const Color(0xFFF0E9D6),
                     border: Border.all(
-                      color: const Color(0xFF4F46E5),
+                      color: _matchaDeep,
                       width: 1.2,
                     ),
                   ),
@@ -445,13 +453,13 @@ class _SpawnMenuCard extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.subdirectory_arrow_right,
-                        color: Color(0xFF4F46E5),
+                        color: _matchaDeep,
                       ),
                       const SizedBox(width: 10),
                       Text(
                         'Tambah  serupa',
                         style: const TextStyle(
-                          color: Color(0xFF312E81),
+                          color: _matchaInk,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -500,11 +508,11 @@ class _SpawnMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color border = isPrimary
-        ? const Color(0xFF4F46E5)
-        : const Color(0xFFE2E8F0);
+        ? _matchaDeep
+        : _matchaGold;
     final Color iconColor = isPrimary
-        ? const Color(0xFF4F46E5)
-        : const Color(0xFF1F2937);
+        ? _matchaDeep
+        : _matchaInk;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -538,10 +546,10 @@ class FlowGridPainter extends CustomPainter {
     );
 
     final Paint minorPaint = Paint()
-      ..color = const Color(0xFFD7DDF3).withValues(alpha: opacityFactor)
+      ..color = const Color(0xFFD8D1B7).withValues(alpha: opacityFactor)
       ..strokeWidth = 1;
     final Paint majorPaint = Paint()
-      ..color = const Color(0xFFCBD5F5).withValues(alpha: (opacityFactor + 0.1))
+      ..color = const Color(0xFFC8C091).withValues(alpha: (opacityFactor + 0.1))
       ..strokeWidth = 1.2;
 
     for (double x = 0; x <= size.width; x += minorSpacing) {
@@ -581,13 +589,13 @@ class ConnectionPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFCBD5F5);
+      ..color = const Color(0xFFD4CCAE);
 
     final Paint highlightPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFF4F46E5);
+      ..color = _matchaDeep;
 
     for (final connection in connections) {
       final FlowNode? from = nodes.firstWhereOrNull(
@@ -814,7 +822,7 @@ class DiagramTemplate {
     id: 'blank',
     title: 'Rencana kosong',
     description: 'Mulai dari awal, pecah tugas jadi langkah kecil.',
-    previewColor: const Color(0xFFF1F5F9),
+    previewColor: const Color(0xFFF4F8FF),
     previewBuilder: _BlankPreview.new,
     buildDiagram: FlowDiagram.blank,
   );
@@ -825,41 +833,41 @@ class DiagramTemplate {
       title: 'Sesi fokus 25 menit',
       description:
           'Mulai cepat, lindungi fokus, lalu tutup dengan review singkat.',
-      previewColor: const Color(0xFFE6F7F4),
+      previewColor: const Color(0xFFE7EFFB),
       previewBuilder: () => const _TemplatePreview(
         nodes: [
           _PreviewNodeData(
             position: Offset(0.08, 0.15),
             size: Size(0.28, 0.24),
-            color: Color(0xFF34D399),
+            color: Color(0xFF6C9BE6),
             borderRadius: 32,
             label: 'Mulai fokus',
           ),
           _PreviewNodeData(
             position: Offset(0.45, 0.15),
             size: Size(0.34, 0.24),
-            color: Color(0xFF4F46E5),
+            color: Color(0xFF4F79C6),
             borderRadius: 22,
             label: '1 target',
           ),
           _PreviewNodeData.diamond(
             position: Offset(0.23, 0.52),
             size: Size(0.36, 0.3),
-            color: Color(0xFFFBBF24),
+            color: Color(0xFFA9C4F4),
             label: 'Terdistraksi?',
           ),
           _PreviewNodeData(
             position: Offset(0.63, 0.55),
             size: Size(0.28, 0.24),
-            color: Color(0xFF38BDF8),
+            color: Color(0xFF7DA7EA),
             borderRadius: 20,
             label: 'Kembali fokus',
           ),
         ],
         connections: [
-          _PreviewConnectionData(0, 1, Color(0xFF4F46E5)),
-          _PreviewConnectionData(1, 2, Color(0xFF4F46E5)),
-          _PreviewConnectionData(2, 3, Color(0xFF4F46E5)),
+          _PreviewConnectionData(0, 1, Color(0xFF4F79C6)),
+          _PreviewConnectionData(1, 2, Color(0xFF4F79C6)),
+          _PreviewConnectionData(2, 3, Color(0xFF4F79C6)),
         ],
       ),
       buildDiagram: () {
@@ -914,41 +922,41 @@ class DiagramTemplate {
       id: 'weekly_plan',
       title: 'Rencana mingguan',
       description: 'Susun prioritas, blok waktu, lalu eksekusi harian.',
-      previewColor: const Color(0xFFEFF6FF),
+      previewColor: const Color(0xFFEDF4FF),
       previewBuilder: () => const _TemplatePreview(
         nodes: [
           _PreviewNodeData(
             position: Offset(0.12, 0.18),
             size: Size(0.3, 0.22),
-            color: Color(0xFF34D399),
+            color: Color(0xFF7DA7EA),
             borderRadius: 30,
             label: 'Catat tugas',
           ),
           _PreviewNodeData(
             position: Offset(0.48, 0.12),
             size: Size(0.32, 0.24),
-            color: Color(0xFF60A5FA),
+            color: Color(0xFF9DBDEA),
             borderRadius: 24,
             label: 'Kelompokkan',
           ),
           _PreviewNodeData.diamond(
             position: Offset(0.28, 0.5),
             size: Size(0.34, 0.32),
-            color: Color(0xFFF9A8D4),
+            color: Color(0xFFC8DBF4),
             label: 'Prioritas?',
           ),
           _PreviewNodeData(
             position: Offset(0.68, 0.5),
             size: Size(0.28, 0.24),
-            color: Color(0xFF2DD4BF),
+            color: Color(0xFF5B84CB),
             borderRadius: 22,
             label: 'Blok waktu',
           ),
         ],
         connections: [
-          _PreviewConnectionData(0, 1, Color(0xFF0284C7)),
-          _PreviewConnectionData(1, 2, Color(0xFF0284C7)),
-          _PreviewConnectionData(2, 3, Color(0xFF0284C7)),
+          _PreviewConnectionData(0, 1, Color(0xFF5B84CB)),
+          _PreviewConnectionData(1, 2, Color(0xFF5B84CB)),
+          _PreviewConnectionData(2, 3, Color(0xFF5B84CB)),
         ],
       ),
       buildDiagram: () {
@@ -1003,49 +1011,49 @@ class DiagramTemplate {
       id: 'anti_procrastination',
       title: 'Siklus anti menunda',
       description: 'Dari pemicu, aksi kecil, sampai reward sederhana.',
-      previewColor: const Color(0xFFFFF1E6),
+      previewColor: const Color(0xFFEAF1FB),
       previewBuilder: () => const _TemplatePreview(
         nodes: [
           _PreviewNodeData(
             position: Offset(0.1, 0.15),
             size: Size(0.28, 0.24),
-            color: Color(0xFFF97316),
+            color: Color(0xFF86A8DD),
             borderRadius: 22,
             label: 'Pemicu',
           ),
           _PreviewNodeData(
             position: Offset(0.44, 0.15),
             size: Size(0.32, 0.24),
-            color: Color(0xFF4F46E5),
+            color: Color(0xFF456DB1),
             borderRadius: 22,
             label: 'Tarik napas',
           ),
           _PreviewNodeData(
             position: Offset(0.72, 0.18),
             size: Size(0.32, 0.24),
-            color: Color(0xFF22D3EE),
+            color: Color(0xFFB8CEF2),
             borderRadius: 22,
             label: 'Mulai 5m',
           ),
           _PreviewNodeData.parallelogram(
             position: Offset(0.28, 0.55),
             size: Size(0.32, 0.26),
-            color: Color(0xFFFB7185),
+            color: Color(0xFF9DB7E1),
             label: 'Checkpoint',
           ),
           _PreviewNodeData(
             position: Offset(0.64, 0.56),
             size: Size(0.28, 0.24),
-            color: Color(0xFF34D399),
+            color: Color(0xFF6D93D3),
             borderRadius: 24,
             label: 'Rayakan',
           ),
         ],
         connections: [
-          _PreviewConnectionData(0, 1, Color(0xFFF97316)),
-          _PreviewConnectionData(1, 2, Color(0xFF4F46E5)),
-          _PreviewConnectionData(1, 3, Color(0xFF4F46E5)),
-          _PreviewConnectionData(3, 4, Color(0xFF34D399)),
+          _PreviewConnectionData(0, 1, Color(0xFF5C84C6)),
+          _PreviewConnectionData(1, 2, Color(0xFF456DB1)),
+          _PreviewConnectionData(1, 3, Color(0xFF456DB1)),
+          _PreviewConnectionData(3, 4, Color(0xFF6D93D3)),
         ],
       ),
       buildDiagram: () {
@@ -1389,8 +1397,8 @@ const Map<FlowNodeType, FlowNodeStyle> _styles = <FlowNodeType, FlowNodeStyle>{
   FlowNodeType.start: FlowNodeStyle(
     defaultSize: Size(160, 72),
     defaultLabel: 'Mulai',
-    fillColor: Color(0xFF34D399),
-    borderColor: Color(0xFF059669),
+    fillColor: _matchaOlive,
+    borderColor: _matchaDeep,
     shape: FlowShape.stadium,
     textColor: _appWhite,
     borderRadius: 32,
@@ -1398,46 +1406,46 @@ const Map<FlowNodeType, FlowNodeStyle> _styles = <FlowNodeType, FlowNodeStyle>{
   FlowNodeType.process: FlowNodeStyle(
     defaultSize: Size(220, 120),
     defaultLabel: 'Langkah proses',
-    fillColor: Color(0xFFEEF2FF),
-    borderColor: Color(0xFF4F46E5),
+    fillColor: Color(0xFFDFEAF8),
+    borderColor: Color(0xFF6B8FCF),
     shape: FlowShape.rounded,
-    textColor: Color(0xFF1F2937),
+    textColor: _matchaInk,
     borderRadius: 24,
   ),
   FlowNodeType.decision: FlowNodeStyle(
     defaultSize: Size(200, 200),
     defaultLabel: 'Keputusan?',
-    fillColor: Color(0xFFFDE68A),
-    borderColor: Color(0xFFF59E0B),
+    fillColor: Color(0xFFD4E2F8),
+    borderColor: Color(0xFF88A8D9),
     shape: FlowShape.diamond,
-    textColor: Color(0xFF92400E),
+    textColor: Color(0xFF274976),
     borderRadius: 20,
   ),
   FlowNodeType.data: FlowNodeStyle(
     defaultSize: Size(220, 120),
     defaultLabel: 'Data / IO',
-    fillColor: Color(0xFFBFDBFE),
-    borderColor: Color(0xFF2563EB),
+    fillColor: Color(0xFFC8D9F2),
+    borderColor: Color(0xFF5E86C8),
     shape: FlowShape.parallelogram,
-    textColor: Color(0xFF1E3A8A),
+    textColor: Color(0xFF203A63),
     borderRadius: 20,
   ),
   FlowNodeType.terminator: FlowNodeStyle(
     defaultSize: Size(160, 72),
     defaultLabel: 'Selesai',
-    fillColor: Color(0xFFFECACA),
-    borderColor: Color(0xFFDC2626),
+    fillColor: Color(0xFFBFD0EC),
+    borderColor: Color(0xFF5579B7),
     shape: FlowShape.stadium,
-    textColor: Color(0xFF881337),
+    textColor: Color(0xFF17355D),
     borderRadius: 32,
   ),
   FlowNodeType.note: FlowNodeStyle(
     defaultSize: Size(220, 140),
     defaultLabel: 'Catatan penting',
-    fillColor: Color(0xFFFFF7ED),
-    borderColor: Color(0xFFF97316),
+    fillColor: Color(0xFFECF3FC),
+    borderColor: Color(0xFF88A8D9),
     shape: FlowShape.rectangle,
-    textColor: Color(0xFF92400E),
+    textColor: Color(0xFF274976),
     borderRadius: 18,
   ),
 };
@@ -1526,7 +1534,7 @@ class _SelectionOverlay extends StatelessWidget {
                 margin: const EdgeInsets.all(_padding),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: const Color(0xFF4F46E5),
+                    color: _matchaDeep,
                     width: 1.5,
                   ),
                   borderRadius: BorderRadius.circular(
@@ -1536,7 +1544,7 @@ class _SelectionOverlay extends StatelessWidget {
                   ),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0x244F46E5),
+                      color: Color(0x2456661F),
                       blurRadius: 20,
                       offset: Offset(0, 12),
                     ),
@@ -1671,10 +1679,10 @@ class _SpawnHandle extends StatelessWidget {
             decoration: BoxDecoration(
               color: _appWhite,
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF4F46E5), width: 1.6),
+              border: Border.all(color: _matchaDeep, width: 1.6),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x1A4F46E5),
+                  color: Color(0x1A56661F),
                   blurRadius: 10,
                   offset: Offset(0, 4),
                 ),
@@ -1686,7 +1694,7 @@ class _SpawnHandle extends StatelessWidget {
                 child: const Icon(
                   Icons.arrow_forward_rounded,
                   size: 18,
-                  color: Color(0xFF4F46E5),
+                  color: _matchaDeep,
                 ),
               ),
             ),
@@ -1795,10 +1803,10 @@ class _ResizeHandle extends StatelessWidget {
           decoration: BoxDecoration(
             color: _appWhite,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0xFF4F46E5), width: 2),
+            border: Border.all(color: _matchaDeep, width: 2),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x224F46E5),
+                color: Color(0x2256661F),
                 blurRadius: 12,
                 offset: Offset(0, 4),
               ),
@@ -1810,10 +1818,10 @@ class _ResizeHandle extends StatelessWidget {
   }
 }
 
-const Color _andrewInk = Color(0xFF0F172A);
-const Color _andrewTeal = Color(0xFF0F766E);
-const Color _andrewCream = Color(0xFFF8F6F2);
-const Color _andrewSoftTeal = Color(0xFFCCFBF1);
+const Color _andrewInk = _matchaInk;
+const Color _andrewTeal = _matchaDeep;
+const Color _andrewCream = _matchaCream;
+const Color _andrewSoftTeal = _matchaSoft;
 
 class AndrewApp extends StatefulWidget {
   const AndrewApp({super.key});
@@ -1871,8 +1879,8 @@ class _AndrewAppState extends State<AndrewApp> {
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: _appWhite,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-            prefixIconColor: const Color(0xFF94A3B8),
+            hintStyle: const TextStyle(color: _matchaMuted),
+            prefixIconColor: _matchaMuted,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
               borderSide: BorderSide.none,
@@ -1900,13 +1908,13 @@ class _AndrewAppState extends State<AndrewApp> {
                   textTheme.labelSmall ?? const TextStyle(fontSize: 12);
               final color = states.contains(MaterialState.selected)
                   ? _andrewTeal
-                  : const Color(0xFF94A3B8);
+                  : _matchaMuted;
               return base.copyWith(fontWeight: FontWeight.w600, color: color);
             }),
             iconTheme: MaterialStateProperty.resolveWith((states) {
               final color = states.contains(MaterialState.selected)
                   ? _andrewTeal
-                  : const Color(0xFF94A3B8);
+                  : _matchaMuted;
               return IconThemeData(color: color, size: 24);
             }),
           ),
@@ -1926,8 +1934,8 @@ class AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<AppRoot> {
   static const List<Widget> _pages = [
-    _AndrewHomePage(),
     _AndrewPlanPage(),
+    _AndrewHomePage(),
     _AndrewCoachPage(),
     _AndrewProgressPage(),
   ];
@@ -2044,7 +2052,7 @@ class _AppRootState extends State<AppRoot> {
   Widget build(BuildContext context) {
     return YounekaHomeShell(
       pages: _pages,
-      initialIndex: 1,
+      initialIndex: 0,
       onSidebarAction: _handleSidebarAction,
       onMentorTap: () => _openMentorChatPopup(),
     );
@@ -2059,7 +2067,7 @@ class _AndrewHomePage extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFFDF8F2), Color(0xFFE8F3F1)],
+          colors: [Color(0xFFF3F8FF), Color(0xFFDCE8F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2127,9 +2135,7 @@ class _AndrewHomeHeader extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Mentor anti menunda untuk anak muda.',
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF475569),
-                      ),
+                      style: textTheme.bodyMedium?.copyWith(color: _matchaMuted),
                     ),
                   ],
                 ),
@@ -2164,17 +2170,17 @@ class _AndrewHomeHeader extends StatelessWidget {
               _QuickChip(
                 icon: Icons.timer_rounded,
                 label: 'Fokus 25m',
-                color: Color(0xFF0F766E),
+                color: _andrewTeal,
               ),
               _QuickChip(
                 icon: Icons.account_tree_rounded,
                 label: 'Pecah tugas',
-                color: Color(0xFFF97316),
+                color: _matchaOlive,
               ),
               _QuickChip(
                 icon: Icons.calendar_today_rounded,
                 label: 'Rapikan jadwal',
-                color: Color(0xFF2563EB),
+                color: _matchaGold,
               ),
             ],
           ),
@@ -2259,9 +2265,7 @@ class _AndrewFocusCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     'Andrew akan bantu kamu mulai tanpa menunggu mood.',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF475569),
-                    ),
+                    style: textTheme.bodyMedium?.copyWith(color: _matchaMuted),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -2308,18 +2312,18 @@ class _FocusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: _matchaMist,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF475569)),
+          Icon(icon, size: 14, color: _matchaMuted),
           const SizedBox(width: 6),
           Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: const Color(0xFF475569),
+              color: _matchaMuted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -2354,7 +2358,7 @@ class _AndrewSectionHeader extends StatelessWidget {
           Text(
             subtitle,
             style: textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF64748B),
+              color: _matchaMuted,
             ),
           ),
         ],
@@ -2517,7 +2521,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     final gridHeight = totalRows * _hourRowHeight;
 
     return Container(
-      color: const Color(0xFFF2F5FA),
+      color: const Color(0xFFF2ECDD),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -2530,13 +2534,13 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8EFFA),
+                      color: _matchaMist,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: const Color(0xFFAFC5E9)),
+                      border: Border.all(color: _matchaGold),
                     ),
                     child: const Icon(
                       Icons.person_rounded,
-                      color: Color(0xFF0F2748),
+                      color: _matchaDeep,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2549,7 +2553,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                           style: TextStyle(
                             fontSize: 42 / 2,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF101A2D),
+                            color: _andrewInk,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -2559,7 +2563,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                               'LV 1',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF5E6E87),
+                                color: _matchaMuted,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -2568,7 +2572,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                               child: Container(
                                 height: 8,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFDCE5F3),
+                                  color: const Color(0xFFD9D2B0),
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: FractionallySizedBox(
@@ -2576,7 +2580,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                                   alignment: Alignment.centerLeft,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF4A72B8),
+                                      color: _andrewTeal,
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                   ),
@@ -2595,7 +2599,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                         'Rank',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF5E6E87),
+                          color: _matchaMuted,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -2606,7 +2610,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                         decoration: BoxDecoration(
                           color: _appWhite,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFCAD6EA)),
+                          border: Border.all(color: _matchaGold),
                         ),
                         alignment: Alignment.center,
                         child: const Text(
@@ -2626,7 +2630,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 38,
-                  color: Color(0xFF2C7FDB),
+                  color: _andrewTeal,
                 ),
               ),
               const SizedBox(height: 8),
@@ -2636,7 +2640,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                     child: Text(
                       'Belum ada rencana',
                       style: TextStyle(
-                        color: Color(0xFF6A7992),
+                        color: _matchaMuted,
                         fontSize: 20 / 2,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2645,7 +2649,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                   FilledButton.icon(
                     onPressed: _startPomodoro,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A72B8),
+                      backgroundColor: _andrewTeal,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,
@@ -2684,7 +2688,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         decoration: BoxDecoration(
                           color: selected
-                              ? const Color(0xFFDFEAFE)
+                              ? _andrewSoftTeal.withOpacity(0.55)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -2696,8 +2700,8 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                               style: TextStyle(
                                 fontSize: 11,
                                 color: selected
-                                    ? const Color(0xFF4A72B8)
-                                    : const Color(0xFF6E7D95),
+                                    ? _andrewTeal
+                                    : _matchaMuted,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -2706,11 +2710,11 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                               height: 34,
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? const Color(0xFF4A72B8)
+                                    ? _andrewTeal
                                     : _appWhite,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: const Color(0xFFC9D6EA),
+                                  color: _matchaGold,
                                 ),
                               ),
                               alignment: Alignment.center,
@@ -2787,7 +2791,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                                       decoration: const BoxDecoration(
                                         border: Border(
                                           top: BorderSide(
-                                            color: Color(0xFFCCD6E6),
+                                            color: _matchaMist,
                                           ),
                                           left: BorderSide(
                                             color: Color(0xFFCCD6E6),
@@ -2811,11 +2815,11 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                                         6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF4A72B8),
+                                        color: _andrewTeal,
                                         borderRadius: BorderRadius.circular(10),
                                         boxShadow: const [
                                           BoxShadow(
-                                            color: Color(0x223A5F9A),
+                                            color: Color(0x2256661F),
                                             blurRadius: 8,
                                             offset: Offset(0, 3),
                                           ),
@@ -2965,7 +2969,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFEFF3F8),
+          color: const Color(0xFFF1EBDD),
           borderRadius: BorderRadius.circular(26),
           boxShadow: const [
             BoxShadow(
@@ -3012,7 +3016,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                     ),
                     focusedBorder: UnderlineInputBorder(
                       borderSide: BorderSide(
-                        color: Color(0xFF2563EB),
+                        color: _andrewTeal,
                         width: 2,
                       ),
                     ),
@@ -3053,7 +3057,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1D4ED8),
+                          color: _matchaOlive,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const Text(
@@ -3119,7 +3123,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                     child: const Text(
                       'More options',
                       style: TextStyle(
-                        color: Color(0xFF1D4ED8),
+                        color: _matchaOlive,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -3128,7 +3132,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                   FilledButton(
                     onPressed: _submit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF1D4ED8),
+                      backgroundColor: _andrewTeal,
                       foregroundColor: _appWhite,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
@@ -3164,7 +3168,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFCDE7FF) : Colors.transparent,
+          color: selected ? _andrewSoftTeal.withOpacity(0.5) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -3233,7 +3237,7 @@ class _AndrewCoachPage extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFF7F5F1), Color(0xFFEAF2F4)],
+          colors: [Color(0xFFF2F7FF), Color(0xFFDCE7F5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -3361,7 +3365,7 @@ class _CoachMessage extends StatelessWidget {
               time,
               style: Theme.of(
                 context,
-              ).textTheme.labelSmall?.copyWith(color: const Color(0xFF64748B)),
+              ).textTheme.labelSmall?.copyWith(color: _matchaMuted),
             ),
           ],
         ),
@@ -3383,7 +3387,7 @@ class _CoachPrompt extends StatelessWidget {
       decoration: BoxDecoration(
         color: _appWhite,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: _matchaGold),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3411,7 +3415,7 @@ class _AndrewProgressPage extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFF8F6F2), Color(0xFFE9F0F2)],
+          colors: [Color(0xFFF2F7FF), Color(0xFFDDE8F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -3435,7 +3439,7 @@ class _AndrewProgressPage extends StatelessWidget {
                       title: 'Streak',
                       value: '6 hari',
                       detail: 'Naik dari minggu lalu',
-                      color: Color(0xFFF97316),
+                      color: _matchaOlive,
                     ),
                   ),
                   SizedBox(width: 12),
@@ -3445,7 +3449,7 @@ class _AndrewProgressPage extends StatelessWidget {
                       title: 'Fokus',
                       value: '4j 20m',
                       detail: 'Total minggu ini',
-                      color: Color(0xFF0F766E),
+                      color: _andrewTeal,
                     ),
                   ),
                 ],
@@ -3456,7 +3460,7 @@ class _AndrewProgressPage extends StatelessWidget {
                 title: 'Tugas selesai',
                 value: '14 dari 18',
                 detail: '78% tercapai',
-                color: Color(0xFF2563EB),
+                color: _matchaGold,
               ),
               SizedBox(height: 16),
               Text(
@@ -3538,7 +3542,7 @@ class _AndrewStatCard extends StatelessWidget {
             title,
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
           ),
           const SizedBox(height: 4),
           Text(
@@ -3553,7 +3557,7 @@ class _AndrewStatCard extends StatelessWidget {
             detail,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+            ).textTheme.bodySmall?.copyWith(color: _matchaMuted),
           ),
         ],
       ),
@@ -3580,7 +3584,7 @@ class _AndrewStreakTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: _appWhite,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: _matchaGold),
       ),
       child: Row(
         children: [
@@ -3588,7 +3592,7 @@ class _AndrewStreakTile extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
+              color: _matchaMist,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: _andrewTeal),
@@ -3609,7 +3613,7 @@ class _AndrewStreakTile extends StatelessWidget {
                 Text(
                   detail,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: _matchaMuted,
                   ),
                 ),
               ],
@@ -4577,10 +4581,10 @@ class _RailButton extends StatelessWidget {
     final Color accent = destructive
         ? const Color(0xFFE11D48)
         : highlighted
-        ? const Color(0xFF4F46E5)
-        : const Color(0xFF1F2937);
+        ? _matchaDeep
+        : _matchaInk;
     final Color background = highlighted
-        ? const Color(0xFFE0E7FF)
+        ? _matchaSoft.withOpacity(0.45)
         : Colors.transparent;
 
     return Padding(
@@ -4594,7 +4598,7 @@ class _RailButton extends StatelessWidget {
           child: IconButton(
             onPressed: enabled ? onTap : null,
             icon: Icon(icon),
-            color: enabled ? accent : const Color(0xFFCBD5F5),
+            color: enabled ? accent : const Color(0xFFCFC8A9),
             disabledColor: const Color(0xFFD1D5DB),
             splashRadius: 28,
           ),

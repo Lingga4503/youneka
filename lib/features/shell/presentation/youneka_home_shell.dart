@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
-const Color _appWhite = Color(0xFFFAFDFF);
+const Color _shellSurface = Color(0xFFF0F6FD);
+const Color _shellInk = Color(0xFF16233A);
+const Color _shellMuted = Color(0xFF7187A6);
+const Color _shellAccent = Color(0xFF6F98DC);
+const Color _shellAccentDeep = Color(0xFF274976);
+const Color _shellSoft = Color(0xFFDDE8F6);
+const Color _shellGold = Color(0xFFA4C1E8);
 
 class YounekaHomeShell extends StatefulWidget {
   const YounekaHomeShell({
@@ -21,250 +27,214 @@ class YounekaHomeShell extends StatefulWidget {
 }
 
 class _YounekaHomeShellState extends State<YounekaHomeShell> {
-  static const double _railWidth = 74;
-  static const double _railPeek = 22; // bagian rail yang tetap terlihat saat panel ditutup
-
   late int _selectedIndex;
-  double _panelSlide = 0; // 0 = tertutup, panelWidth = terbuka penuh
-  bool _isDraggingSidebar = false;
+
+  static const List<_ShellDestination> _destinations = [
+    _ShellDestination(
+      label: 'Beranda',
+      icon: Icons.home_rounded,
+    ),
+    _ShellDestination(
+      label: 'Andrew',
+      icon: Icons.auto_awesome_rounded,
+    ),
+    _ShellDestination(
+      label: 'Coach',
+      icon: Icons.self_improvement_rounded,
+    ),
+    _ShellDestination(
+      label: 'Progres',
+      icon: Icons.bar_chart_rounded,
+    ),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex;
-    _panelSlide = 0;
+    _selectedIndex = widget.initialIndex
+        .clamp(0, widget.pages.length - 1)
+        .toInt();
   }
 
-  void _onSidebarDragStart(DragStartDetails _) {
-    _isDraggingSidebar = true;
-  }
-
-  void _onSidebarDragUpdate(DragUpdateDetails details, double panelWidth) {
-    setState(() {
-      // Geser kiri (delta negatif) menambah slide sehingga panel bergeser masuk,
-      // tapi lebar panel tetap konstan agar isi tidak reflow.
-      _panelSlide = (_panelSlide - details.delta.dx).clamp(
-        0.0,
-        panelWidth,
-      );
-    });
-  }
-
-  void _onSidebarDragEnd(DragEndDetails details, double panelWidth) {
-    _isDraggingSidebar = false;
-    final velocityX = details.primaryVelocity ?? 0;
-    final snapOpen = panelWidth;
-    final midpoint = snapOpen * 0.45;
-    setState(() {
-      if (velocityX < -180) {
-        _panelSlide = snapOpen;
-      } else if (velocityX > 180) {
-        _panelSlide = 0;
-      } else {
-        _panelSlide = _panelSlide >= midpoint ? snapOpen : 0;
-      }
-    });
-  }
-
-  void _toggleSidebarPanel(double panelWidth) {
-    final snapOpen = panelWidth;
-    setState(() {
-      _panelSlide = _panelSlide <= 1 ? snapOpen : 0;
-    });
+  Future<void> _openQuickActions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return _QuickActionSheet(
+          onMentorTap: () {
+            Navigator.pop(sheetContext);
+            widget.onMentorTap();
+          },
+          onActionTap: (action) async {
+            Navigator.pop(sheetContext);
+            await widget.onSidebarAction(action);
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Panel maksimum 40% layar (dibatasi 260–420 px).
-          final double panelWidth = (constraints.maxWidth - _railWidth)
-              .clamp(0.0, double.infinity)
-              .toDouble();
-          final slideAmount = _panelSlide.clamp(0.0, panelWidth);
-          final isPanelOpen = slideAmount > 1;
-          final double closedOffset = (panelWidth - _railPeek).clamp(
-            0.0,
-            panelWidth,
-          );
-          final double panelTranslateX = closedOffset - slideAmount;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-          return Stack(
+    return Scaffold(
+      backgroundColor: _shellSurface,
+      body: IndexedStack(index: _selectedIndex, children: widget.pages),
+      bottomNavigationBar: SizedBox(
+        height: 112 + bottomInset,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(14, 0, 14, 14 + bottomInset),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.bottomCenter,
             children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                right: _railPeek, // sisakan ruang kecil untuk peek rail saat tutup
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: widget.pages,
+              Positioned.fill(
+                top: 30,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.14),
+                        blurRadius: 28,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: ClipPath(
+                    clipper: const _BottomBarClipper(),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [_shellSurface, Color(0xFFE5EFFB)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _BottomNavItem(
+                                destination: _destinations[0],
+                                selected: _selectedIndex == 0,
+                                onTap: () => setState(() => _selectedIndex = 0),
+                              ),
+                            ),
+                            Expanded(
+                              child: _BottomNavItem(
+                                destination: _destinations[1],
+                                selected: _selectedIndex == 1,
+                                onTap: () => setState(() => _selectedIndex = 1),
+                              ),
+                            ),
+                            const SizedBox(width: 86),
+                            Expanded(
+                              child: _BottomNavItem(
+                                destination: _destinations[2],
+                                selected: _selectedIndex == 2,
+                                onTap: () => setState(() => _selectedIndex = 2),
+                              ),
+                            ),
+                            Expanded(
+                              child: _BottomNavItem(
+                                destination: _destinations[3],
+                                selected: _selectedIndex == 3,
+                                onTap: () => setState(() => _selectedIndex = 3),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              // Rail + panel satu grup, bergerak bersama.
               Positioned(
-                top: 0,
-                bottom: 0,
-                right: 0,
-                width: _railWidth + panelWidth,
-                child: AnimatedContainer(
-                  duration: _isDraggingSidebar
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  transform: Matrix4.identity()..translate(panelTranslateX),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onHorizontalDragStart: _onSidebarDragStart,
-                    onHorizontalDragUpdate: (details) =>
-                        _onSidebarDragUpdate(details, panelWidth),
-                    onHorizontalDragEnd: (details) =>
-                        _onSidebarDragEnd(details, panelWidth),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          width: _railWidth,
-                          child: _YounekaRightSidebar(
-                            selectedIndex: _selectedIndex,
-                            isPanelOpen: isPanelOpen,
-                            onSelect: (index) =>
-                                setState(() => _selectedIndex = index),
-                            onActionTap: widget.onSidebarAction,
-                            onMentorTap: widget.onMentorTap,
-                            onTogglePanel: () =>
-                                _toggleSidebarPanel(panelWidth),
-                          ),
-                        ),
-                        SizedBox(
-                          width: panelWidth,
-                          child: ClipRect(
-                            child: slideAmount <= 0
-                                ? const SizedBox.shrink()
-                                : _SidebarSlidePanel(
-                                    onActionTap: widget.onSidebarAction,
-                                  ),
-                          ),
+                top: -12,
+                child: GestureDetector(
+                  onTap: _openQuickActions,
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [_shellAccent, _shellAccentDeep],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(color: _shellSurface, width: 5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _shellAccent.withValues(alpha: 0.34),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
                         ),
                       ],
+                    ),
+                    child: const Icon(
+                      Icons.add_rounded,
+                      color: _shellSurface,
+                      size: 36,
                     ),
                   ),
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 }
 
-class _SidebarSlidePanel extends StatelessWidget {
-  const _SidebarSlidePanel({required this.onActionTap});
+class _ShellDestination {
+  const _ShellDestination({required this.label, required this.icon});
 
-  final Future<void> Function(String action) onActionTap;
+  final String label;
+  final IconData icon;
+}
+
+class _BottomNavItem extends StatelessWidget {
+  const _BottomNavItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ShellDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F6FD),
-        border: Border(
-          left: BorderSide(color: const Color(0xFFD6E0F3)),
-          right: BorderSide(color: const Color(0xFFD6E0F3)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF2A3D63).withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(-2, 0),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        left: false,
-        right: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+    final color = selected ? _shellAccent : _shellMuted;
+    return Tooltip(
+      message: destination.label,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 28,
+        highlightShape: BoxShape.circle,
+        child: SizedBox(
+          height: 56,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                'Template Rencana',
-                style: TextStyle(
-                  color: Color(0xFF1A2A46),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              Icon(destination.icon, color: color, size: selected ? 30 : 28),
               const SizedBox(height: 6),
-              Text(
-                'Tarik panel ini untuk akses cepat template dan data offline.',
-                style: TextStyle(
-                  color: const Color(0xFF3D4F73).withValues(alpha: 0.8),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 1.3,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                width: selected ? 18 : 6,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: selected ? 1 : 0.18),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const _PanelTemplateCard(
-                icon: Icons.favorite_rounded,
-                title: 'Kebiasaan sehat',
-                subtitle: 'Olahraga ringan, minum air, dan jeda peregangan.',
-                accent: Color(0xFF20A56E),
-              ),
-              const SizedBox(height: 8),
-              const _PanelTemplateCard(
-                icon: Icons.work_rounded,
-                title: 'Deep work',
-                subtitle: 'Blok fokus tanpa distraksi untuk kerja inti.',
-                accent: Color(0xFF4A6EAF),
-              ),
-              const SizedBox(height: 8),
-              const _PanelTemplateCard(
-                icon: Icons.school_rounded,
-                title: 'Belajar terarah',
-                subtitle: 'Sesi belajar + review agar materi lebih melekat.',
-                accent: Color(0xFF6C58D9),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Data offline',
-                style: TextStyle(
-                  color: Color(0xFF1A2A46),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _PanelActionChip(
-                    icon: Icons.upload_file_rounded,
-                    label: 'Import',
-                    onTap: () => onActionTap('import'),
-                  ),
-                  _PanelActionChip(
-                    icon: Icons.download_rounded,
-                    label: 'Export',
-                    onTap: () => onActionTap('export'),
-                  ),
-                  _PanelActionChip(
-                    icon: Icons.language_rounded,
-                    label: 'Bahasa',
-                    onTap: () => onActionTap('language'),
-                  ),
-                  _PanelActionChip(
-                    icon: Icons.settings_rounded,
-                    label: 'Pengaturan',
-                    onTap: () => onActionTap('settings'),
-                  ),
-                ],
               ),
             ],
           ),
@@ -274,167 +244,167 @@ class _SidebarSlidePanel extends StatelessWidget {
   }
 }
 
-class _YounekaRightSidebar extends StatelessWidget {
-  const _YounekaRightSidebar({
-    required this.selectedIndex,
-    required this.isPanelOpen,
-    required this.onSelect,
-    required this.onActionTap,
+class _QuickActionSheet extends StatelessWidget {
+  const _QuickActionSheet({
     required this.onMentorTap,
-    required this.onTogglePanel,
+    required this.onActionTap,
   });
 
-  final int selectedIndex;
-  final bool isPanelOpen;
-  final ValueChanged<int> onSelect;
-  final Future<void> Function(String action) onActionTap;
   final VoidCallback onMentorTap;
-  final VoidCallback onTogglePanel;
+  final Future<void> Function(String action) onActionTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 74,
-      decoration: const BoxDecoration(color: Color(0xFF4A6EAF)),
-      child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            PopupMenuButton<String>(
-              tooltip: 'Menu',
-              onSelected: (value) {
-                onActionTap(value);
-              },
-              color: _appWhite,
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'settings', child: Text('Pengaturan')),
-                PopupMenuItem(value: 'import', child: Text('Import data')),
-                PopupMenuItem(value: 'export', child: Text('Export data')),
-                PopupMenuItem(value: 'language', child: Text('Ganti bahasa')),
-              ],
-              child: const SizedBox(
-                width: 56,
-                height: 44,
-                child: Icon(Icons.menu_rounded, color: _appWhite, size: 22),
-              ),
-            ),
-            Container(
-              width: 36,
-              height: 1,
-              color: _appWhite.withValues(alpha: 0.35),
-            ),
-            const SizedBox(height: 10),
-            const _RailMissionText(),
-            const SizedBox(height: 8),
-            IconButton(
-              onPressed: onTogglePanel,
-              icon: Icon(
-                isPanelOpen
-                    ? Icons.chevron_right_rounded
-                    : Icons.chevron_left_rounded,
-                color: _appWhite.withValues(alpha: 0.9),
-                size: 34,
-              ),
-            ),
-            const Spacer(),
-            _RailNavButton(
-              icon: Icons.timer_rounded,
-              selected: selectedIndex == 1,
-              onTap: () => onSelect(1),
-            ),
-            _RailNavButton(
-              icon: Icons.self_improvement_rounded,
-              selected: selectedIndex == 2,
-              onTap: () => onSelect(2),
-            ),
-            _RailNavButton(
-              icon: Icons.content_copy_rounded,
-              selected: selectedIndex == 3,
-              onTap: () => onSelect(3),
-            ),
-            _RailNavButton(
-              icon: Icons.mail_outline_rounded,
-              selected: selectedIndex == 0,
-              onTap: () => onSelect(0),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              width: 36,
-              height: 1,
-              color: _appWhite.withValues(alpha: 0.35),
-            ),
-            const SizedBox(height: 10),
-            _RailNavButton(
-              icon: Icons.chat_bubble_outline_rounded,
-              selected: false,
-              onTap: onMentorTap,
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
-}
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-class _RailMissionText extends StatelessWidget {
-  const _RailMissionText();
-
-  @override
-  Widget build(BuildContext context) {
-    const letters = ['M', 'I', 'S', 'S', 'I', 'O', 'N'];
-    return Column(
-      children: [
-        for (final l in letters)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Text(
-              l,
-              style: const TextStyle(
-                color: _appWhite,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _RailNavButton extends StatelessWidget {
-  const _RailNavButton({
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+      padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottomInset),
+      child: Material(
+        color: Colors.transparent,
         child: Container(
-          width: 46,
-          height: 42,
           decoration: BoxDecoration(
-            color: selected
-                ? _appWhite.withValues(alpha: 0.18)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
+            color: _shellSurface,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.14),
+                blurRadius: 36,
+                offset: const Offset(0, 20),
+              ),
+            ],
           ),
-          child: Icon(
-            icon,
-            color: selected
-                ? _appWhite
-                : _appWhite.withValues(alpha: 0.92),
-            size: 21,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 5,
+                    decoration: BoxDecoration(
+                color: _shellGold,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEAF2FD), Color(0xFFF6FAFF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: _shellGold),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: _shellAccent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.chat_bubble_rounded,
+                          color: _shellAccentDeep,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Mentor Andrew',
+                              style: TextStyle(
+                                color: _shellInk,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Buka mentor chat untuk pecah tugas dan mulai fokus.',
+                              style: TextStyle(
+                                color: _shellMuted,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: onMentorTap,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _shellAccentDeep,
+                          foregroundColor: _shellSurface,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 14,
+                          ),
+                        ),
+                        child: const Text('Buka'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Quick actions',
+                  style: TextStyle(
+                    color: _shellInk,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.5,
+                  children: [
+                    _QuickActionCard(
+                      icon: Icons.upload_file_rounded,
+                      title: 'Import',
+                      subtitle: 'Masukkan backup data',
+                      color: _shellAccentDeep,
+                      onTap: () => onActionTap('import'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.download_rounded,
+                      title: 'Export',
+                      subtitle: 'Simpan backup terbaru',
+                      color: _shellAccent,
+                      onTap: () => onActionTap('export'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.language_rounded,
+                      title: 'Bahasa',
+                      subtitle: 'Ganti locale aplikasi',
+                      color: _shellGold,
+                      onTap: () => onActionTap('language'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.settings_rounded,
+                      title: 'Pengaturan',
+                      subtitle: 'Atur preferensi aplikasi',
+                      color: _shellMuted,
+                      onTap: () => onActionTap('settings'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -442,111 +412,117 @@ class _RailNavButton extends StatelessWidget {
   }
 }
 
-class _PanelActionChip extends StatelessWidget {
-  const _PanelActionChip({
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({
     required this.icon,
-    required this.label,
+    required this.title,
+    required this.subtitle,
+    required this.color,
     required this.onTap,
   });
 
   final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
+  final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      borderRadius: BorderRadius.circular(20),
+      child: Ink(
         decoration: BoxDecoration(
-          color: _appWhite,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFD5DFF2)),
+          color: _shellSoft,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _shellGold),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: const Color(0xFF4A6EAF)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF2B4678),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: _shellInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF7A8599),
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _PanelTemplateCard extends StatelessWidget {
-  const _PanelTemplateCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.accent,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color accent;
+class _BottomBarClipper extends CustomClipper<Path> {
+  const _BottomBarClipper();
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
-      decoration: BoxDecoration(
-        color: _appWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFD9E3F6)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: accent, size: 16),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF1A2A46),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF5A6C91),
-                    fontSize: 10.5,
-                    height: 1.2,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+  Path getClip(Size size) {
+    final path = Path();
+    final notchHalfWidth = size.width * 0.19;
+    const notchDepth = 32.0;
+    const corner = 26.0;
+
+    path.moveTo(0, corner);
+    path.quadraticBezierTo(0, 0, corner, 0);
+    path.lineTo(size.width / 2 - notchHalfWidth, 0);
+    path.cubicTo(
+      size.width / 2 - notchHalfWidth * 0.68,
+      0,
+      size.width / 2 - notchHalfWidth * 0.48,
+      notchDepth,
+      size.width / 2,
+      notchDepth,
     );
+    path.cubicTo(
+      size.width / 2 + notchHalfWidth * 0.48,
+      notchDepth,
+      size.width / 2 + notchHalfWidth * 0.68,
+      0,
+      size.width / 2 + notchHalfWidth,
+      0,
+    );
+    path.lineTo(size.width - corner, 0);
+    path.quadraticBezierTo(size.width, 0, size.width, corner);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    return path;
   }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
