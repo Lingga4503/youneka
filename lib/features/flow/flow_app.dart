@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -8,6 +9,12 @@ import 'package:vector_math/vector_math_64.dart' show Vector3;
 import '../../core/services/app_data_portability_service.dart';
 import '../../core/services/app_locale_service.dart';
 import '../../core/services/plan_template_bridge.dart';
+import 'data/home_state_storage.dart';
+import 'domain/models/home_models.dart';
+import 'presentation/pages/home_notifications_page.dart';
+import 'presentation/pages/home_settings_page.dart';
+import 'presentation/widgets/home_focus_top_section.dart';
+import 'presentation/widgets/home_schedule_timeline_section.dart';
 import '../mentor/presentation/mentor_chat_popup_dialog.dart';
 import '../shell/presentation/youneka_home_shell.dart';
 
@@ -443,10 +450,7 @@ class _SpawnMenuCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: const Color(0xFFF0E9D6),
-                    border: Border.all(
-                      color: _matchaDeep,
-                      width: 1.2,
-                    ),
+                    border: Border.all(color: _matchaDeep, width: 1.2),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -507,12 +511,8 @@ class _SpawnMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color border = isPrimary
-        ? _matchaDeep
-        : _matchaGold;
-    final Color iconColor = isPrimary
-        ? _matchaDeep
-        : _matchaInk;
+    final Color border = isPrimary ? _matchaDeep : _matchaGold;
+    final Color iconColor = isPrimary ? _matchaDeep : _matchaInk;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -1533,10 +1533,7 @@ class _SelectionOverlay extends StatelessWidget {
               child: Container(
                 margin: const EdgeInsets.all(_padding),
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _matchaDeep,
-                    width: 1.5,
-                  ),
+                  border: Border.all(color: _matchaDeep, width: 1.5),
                   borderRadius: BorderRadius.circular(
                     style.shape == FlowShape.stadium
                         ? node.size.height
@@ -2135,7 +2132,9 @@ class _AndrewHomeHeader extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Mentor anti menunda untuk anak muda.',
-                      style: textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: _matchaMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -2357,9 +2356,7 @@ class _AndrewSectionHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: textTheme.bodyMedium?.copyWith(
-              color: _matchaMuted,
-            ),
+            style: textTheme.bodyMedium?.copyWith(color: _matchaMuted),
           ),
         ],
       ),
@@ -2389,49 +2386,150 @@ class _PlanSheetResultData {
 }
 
 class _AndrewPlanPageState extends State<_AndrewPlanPage> {
-  static const int _gridStartHour = 1;
-  static const int _gridEndHour = 23;
-  static const double _hourRowHeight = 56;
-
   late DateTime _selectedDate;
-  final List<_PlanSheetResultData> _plans = <_PlanSheetResultData>[];
+  HomeSettings _settings = HomeSettings.defaults;
+  PomodoroRuntime _pomodoro = PomodoroRuntime.initial(HomeSettings.defaults);
+  List<HomeScheduleItem> _schedules = <HomeScheduleItem>[];
+  List<HomeNotificationItem> _notifications = <HomeNotificationItem>[];
+  Timer? _pomodoroTimer;
+  int _currentLevel = 12;
+  int _currentXp = 1500;
+  int _targetXp = 2000;
+  bool _isLoading = true;
   int _lastTemplateToken = -1;
+  int _idCounter = 0;
 
   @override
   void initState() {
     super.initState();
-    _selectedDate = DateTime.now();
+    _selectedDate = DateUtils.dateOnly(DateTime.now());
     PlanTemplateBridge.selectionNotifier.addListener(_onTemplateSelected);
+    _loadHomeState();
   }
 
   @override
   void dispose() {
+    _pomodoroTimer?.cancel();
     PlanTemplateBridge.selectionNotifier.removeListener(_onTemplateSelected);
     super.dispose();
   }
 
+  Future<void> _loadHomeState() async {
+    final snapshot = await HomeStateStorage.load();
+    if (!mounted) return;
+
+    if (snapshot == null) {
+      setState(() {
+        _schedules = _buildDefaultSchedules(_selectedDate);
+        _appendNotification(
+          title: 'Selamat datang di Focus Mode',
+          body: 'Tap tombol play untuk mulai pomodoro pertama kamu.',
+        );
+        _isLoading = false;
+      });
+      unawaited(_persistHomeState());
+      return;
+    }
+
+    final reconciledPomodoro = _reconcilePomodoro(
+      runtime: snapshot.pomodoro,
+      settings: snapshot.settings,
+    );
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(snapshot.selectedDate);
+      _settings = snapshot.settings;
+      _pomodoro = reconciledPomodoro;
+      _schedules = [...snapshot.schedules];
+      _notifications = [...snapshot.notifications]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _currentLevel = snapshot.currentLevel;
+      _currentXp = snapshot.currentXp;
+      _targetXp = snapshot.targetXp;
+      _isLoading = false;
+    });
+    if (_schedules.isEmpty) {
+      setState(() {
+        _schedules = _buildDefaultSchedules(_selectedDate);
+      });
+      unawaited(_persistHomeState());
+    }
+    if (_pomodoro.phase == PomodoroPhase.running) {
+      _startPomodoroTicker();
+    }
+  }
+
+  PomodoroRuntime _reconcilePomodoro({
+    required PomodoroRuntime runtime,
+    required HomeSettings settings,
+  }) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final expectedTotal = settings.pomodoroMinutes * 60;
+    var next = runtime.copyWith(totalSessions: settings.sessionsPerRound);
+
+    if (next.phase == PomodoroPhase.running) {
+      final elapsedSeconds = ((nowMs - next.lastUpdatedMs) / 1000).floor();
+      final updatedRemaining = (next.remainingSeconds - elapsedSeconds)
+          .clamp(0, 86400)
+          .toInt();
+      next = next.copyWith(
+        remainingSeconds: updatedRemaining,
+        lastUpdatedMs: nowMs,
+      );
+      if (updatedRemaining == 0) {
+        next = next.copyWith(phase: PomodoroPhase.completed);
+      }
+    }
+
+    if (next.phase == PomodoroPhase.idle ||
+        next.phase == PomodoroPhase.completed) {
+      next = next.copyWith(
+        totalSeconds: expectedTotal,
+        remainingSeconds: next.phase == PomodoroPhase.completed
+            ? 0
+            : expectedTotal,
+        totalSessions: settings.sessionsPerRound,
+        completedSessions: next.completedSessions
+            .clamp(0, settings.sessionsPerRound)
+            .toInt(),
+      );
+    } else if (next.totalSeconds != expectedTotal) {
+      next = next.copyWith(totalSeconds: expectedTotal);
+    }
+    return next;
+  }
+
   void _onTemplateSelected() {
+    unawaited(_handleTemplateSelected());
+  }
+
+  Future<void> _handleTemplateSelected() async {
     final payload = PlanTemplateBridge.selectionNotifier.value;
     if (payload == null || payload.token == _lastTemplateToken) return;
     _lastTemplateToken = payload.token;
-    _openAddPlanSheet(
+    final result = await _openAddPlanSheet(
       initialDate: _selectedDate,
       initialStart: TimeOfDay.now(),
       initialTitle: payload.preset.title,
       initialDurationMinutes: payload.preset.durationMinutes,
     );
-  }
-
-  List<DateTime> get _visibleDays {
-    final today = DateTime.now();
-    final start = DateTime(today.year, today.month, today.day - 1);
-    return List<DateTime>.generate(30, (i) {
-      final d = start.add(Duration(days: i));
-      return DateTime(d.year, d.month, d.day);
+    if (result == null || !mounted) return;
+    final item = _createScheduleFromSheet(
+      result,
+      priority: SchedulePriority.medium,
+      description: payload.preset.note,
+    );
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(result.date);
+      _schedules = [..._schedules, item];
+      _appendNotification(
+        title: 'Template ditambahkan',
+        body: payload.preset.title,
+      );
     });
+    unawaited(_persistHomeState());
   }
 
-  Future<void> _openAddPlanSheet({
+  Future<_PlanSheetResultData?> _openAddPlanSheet({
     DateTime? initialDate,
     TimeOfDay? initialStart,
     String? initialTitle,
@@ -2451,417 +2549,676 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         initialDurationMinutes: initialDurationMinutes,
       ),
     );
-    if (result == null || !mounted) return;
-    setState(() {
-      _selectedDate = DateTime(
-        result.date.year,
-        result.date.month,
-        result.date.day,
-      );
-      _plans.add(result);
-    });
+    return result;
   }
 
-  void _startPomodoro() {
-    final messenger = ScaffoldMessenger.of(context);
-    if (_plans.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Belum ada rencana untuk memulai pomodoro.'),
-        ),
-      );
-      return;
+  List<HomeScheduleItem> get _schedulesForSelectedDay {
+    final selected = DateUtils.dateOnly(_selectedDate);
+    final list =
+        _schedules
+            .where((item) => DateUtils.isSameDay(item.startAt, selected))
+            .toList()
+          ..sort((a, b) => a.startAt.compareTo(b.startAt));
+    return list;
+  }
+
+  double get _xpProgress {
+    if (_targetXp <= 0) return 0;
+    return (_currentXp / _targetXp).clamp(0.0, 1.0);
+  }
+
+  int get _displaySession {
+    final next =
+        _pomodoro.completedSessions +
+        (_pomodoro.phase == PomodoroPhase.completed ? 0 : 1);
+    return next.clamp(1, _pomodoro.totalSessions).toInt();
+  }
+
+  String get _timerLabel {
+    final total = _pomodoro.remainingSeconds.clamp(0, 359999).toInt();
+    final minutes = (total ~/ 60).toString().padLeft(2, '0');
+    final seconds = (total % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  IconData get _pomodoroActionIcon {
+    if (_pomodoro.phase == PomodoroPhase.running) {
+      return Icons.pause_rounded;
     }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('Pomodoro dimulai untuk ${_plans.length} rencana.'),
+    return Icons.play_arrow_rounded;
+  }
+
+  String get _pomodoroActionTooltip {
+    switch (_pomodoro.phase) {
+      case PomodoroPhase.running:
+        return 'Pause Pomodoro';
+      case PomodoroPhase.paused:
+        return 'Resume Pomodoro';
+      case PomodoroPhase.completed:
+        return 'Mulai ronde baru';
+      case PomodoroPhase.idle:
+        return 'Mulai Pomodoro';
+    }
+  }
+
+  Future<void> _persistHomeState() async {
+    await HomeStateStorage.save(
+      HomeStateSnapshot(
+        selectedDate: _selectedDate,
+        settings: _settings,
+        pomodoro: _pomodoro,
+        notifications: _notifications,
+        schedules: _schedules,
+        currentLevel: _currentLevel,
+        currentXp: _currentXp,
+        targetXp: _targetXp,
       ),
     );
   }
 
-  bool _sameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  String _weekdayId(DateTime date) {
-    const labels = ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'];
-    return labels[date.weekday - 1];
-  }
-
-  String _hourLabel(int hour24) {
-    final period = hour24 >= 12 ? 'PM' : 'AM';
-    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
-    return '$hour12 $period';
-  }
-
-  int _toMinutes(TimeOfDay t) => t.hour * 60 + t.minute;
-
-  double _blockTop(_PlanSheetResultData p) {
-    final startBase = _gridStartHour * 60;
-    final start = _toMinutes(p.start);
-    final clamped = start < startBase ? startBase : start;
-    return ((clamped - startBase) / 60) * _hourRowHeight;
-  }
-
-  double _blockHeight(_PlanSheetResultData p) {
-    final duration = (_toMinutes(p.end) - _toMinutes(p.start)).clamp(
-      15,
-      24 * 60,
+  void _appendNotification({required String title, required String body}) {
+    final item = HomeNotificationItem(
+      id: 'notif_${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}',
+      title: title,
+      body: body,
+      createdAt: DateTime.now(),
+      isRead: false,
     );
-    return (duration / 60) * _hourRowHeight;
+    _notifications = [item, ..._notifications];
+    if (_notifications.length > 100) {
+      _notifications = _notifications.take(100).toList();
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final visibleDays = _visibleDays;
-    final selectedPlans = _plans
-        .where((p) => _sameDay(p.date, _selectedDate))
-        .toList();
-    final totalRows = _gridEndHour - _gridStartHour + 1;
-    final gridHeight = totalRows * _hourRowHeight;
+  List<HomeScheduleItem> _buildDefaultSchedules(DateTime date) {
+    DateTime at(int hour, int minute) {
+      return DateTime(date.year, date.month, date.day, hour, minute);
+    }
 
-    return Container(
-      color: const Color(0xFFF2ECDD),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    return [
+      HomeScheduleItem(
+        id: 'seed_${date.millisecondsSinceEpoch}_1',
+        title: 'Morning Standup',
+        description: 'Sync tim harian.',
+        location: 'Zoom Meeting',
+        startAt: at(9, 0),
+        endAt: at(9, 30),
+        priority: SchedulePriority.medium,
+        isCompleted: false,
+        rewardedXp: false,
+      ),
+      HomeScheduleItem(
+        id: 'seed_${date.millisecondsSinceEpoch}_2',
+        title: 'UI Design System',
+        description: 'Focusing on component library and tokens',
+        startAt: at(10, 0),
+        endAt: at(11, 0),
+        priority: SchedulePriority.high,
+        isCompleted: false,
+        rewardedXp: false,
+      ),
+      HomeScheduleItem(
+        id: 'seed_${date.millisecondsSinceEpoch}_3',
+        title: 'Review PRs',
+        description: '3 pending requests',
+        startAt: at(11, 30),
+        endAt: at(12, 30),
+        priority: SchedulePriority.medium,
+        isCompleted: false,
+        rewardedXp: false,
+      ),
+      HomeScheduleItem(
+        id: 'seed_${date.millisecondsSinceEpoch}_4',
+        title: 'Lunch Break',
+        description: 'Lunch Break',
+        startAt: at(13, 0),
+        endAt: at(13, 45),
+        priority: SchedulePriority.low,
+        isCompleted: false,
+        rewardedXp: false,
+      ),
+    ];
+  }
+
+  HomeScheduleItem _createScheduleFromSheet(
+    _PlanSheetResultData data, {
+    SchedulePriority? priority,
+    String? description,
+    String? id,
+    bool rewardedXp = false,
+    bool isCompleted = false,
+  }) {
+    final startAt = DateTime(
+      data.date.year,
+      data.date.month,
+      data.date.day,
+      data.start.hour,
+      data.start.minute,
+    );
+    var endAt = DateTime(
+      data.date.year,
+      data.date.month,
+      data.date.day,
+      data.end.hour,
+      data.end.minute,
+    );
+    if (!endAt.isAfter(startAt)) {
+      endAt = startAt.add(const Duration(hours: 1));
+    }
+    final inferredPriority =
+        data.title.toLowerCase().contains('urgent') ||
+            data.title.toLowerCase().contains('high')
+        ? SchedulePriority.high
+        : SchedulePriority.medium;
+    return HomeScheduleItem(
+      id: id ?? 'sch_${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}',
+      title: data.title,
+      description: description ?? 'Kegiatan terjadwal',
+      startAt: startAt,
+      endAt: endAt,
+      priority: priority ?? inferredPriority,
+      isCompleted: isCompleted,
+      rewardedXp: rewardedXp,
+    );
+  }
+
+  Future<void> _openNotifications() async {
+    final result = await Navigator.push<List<HomeNotificationItem>>(
+      context,
+      MaterialPageRoute<List<HomeNotificationItem>>(
+        builder: (_) => HomeNotificationsPage(initialItems: _notifications),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _notifications = result;
+    });
+    unawaited(_persistHomeState());
+  }
+
+  Future<void> _openSettings() async {
+    final result = await Navigator.push<HomeSettings>(
+      context,
+      MaterialPageRoute<HomeSettings>(
+        builder: (_) => HomeSettingsPage(initialSettings: _settings),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _settings = result;
+      final totalSeconds = _settings.pomodoroMinutes * 60;
+      if (_pomodoro.phase == PomodoroPhase.idle ||
+          _pomodoro.phase == PomodoroPhase.completed) {
+        _pomodoro = _pomodoro.copyWith(
+          totalSeconds: totalSeconds,
+          remainingSeconds: _pomodoro.phase == PomodoroPhase.completed
+              ? 0
+              : totalSeconds,
+          totalSessions: _settings.sessionsPerRound,
+          completedSessions: _pomodoro.completedSessions
+              .clamp(0, _settings.sessionsPerRound)
+              .toInt(),
+        );
+      } else {
+        _pomodoro = _pomodoro.copyWith(
+          totalSeconds: totalSeconds,
+          totalSessions: _settings.sessionsPerRound,
+          completedSessions: _pomodoro.completedSessions
+              .clamp(0, _settings.sessionsPerRound)
+              .toInt(),
+        );
+      }
+      _appendNotification(
+        title: 'Pengaturan diperbarui',
+        body:
+            'Pomodoro ${result.pomodoroMinutes} menit, target ${result.sessionsPerRound} sesi.',
+      );
+    });
+    unawaited(_persistHomeState());
+  }
+
+  void _applyXpGain(int amount) {
+    if (amount <= 0) return;
+    var xp = _currentXp + amount;
+    while (xp >= _targetXp) {
+      xp -= _targetXp;
+      _currentLevel += 1;
+      _targetXp += 250;
+      _appendNotification(
+        title: 'Level Up',
+        body: 'Selamat! Kamu naik ke Level $_currentLevel.',
+      );
+    }
+    _currentXp = xp;
+  }
+
+  void _togglePomodoro() {
+    switch (_pomodoro.phase) {
+      case PomodoroPhase.running:
+        _pausePomodoro();
+        break;
+      case PomodoroPhase.paused:
+        _resumePomodoro();
+        break;
+      case PomodoroPhase.idle:
+      case PomodoroPhase.completed:
+        _startPomodoro();
+        break;
+    }
+  }
+
+  void _startPomodoro() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final totalSeconds = _settings.pomodoroMinutes * 60;
+    setState(() {
+      final shouldResetRound =
+          _pomodoro.phase == PomodoroPhase.completed ||
+          _pomodoro.completedSessions >= _settings.sessionsPerRound;
+      _pomodoro = _pomodoro.copyWith(
+        phase: PomodoroPhase.running,
+        totalSeconds: totalSeconds,
+        remainingSeconds: shouldResetRound || _pomodoro.remainingSeconds <= 0
+            ? totalSeconds
+            : _pomodoro.remainingSeconds,
+        completedSessions: shouldResetRound ? 0 : _pomodoro.completedSessions,
+        totalSessions: _settings.sessionsPerRound,
+        lastUpdatedMs: now,
+      );
+    });
+    _startPomodoroTicker();
+    unawaited(_persistHomeState());
+  }
+
+  void _pausePomodoro() {
+    _pomodoroTimer?.cancel();
+    setState(() {
+      _pomodoro = _pomodoro.copyWith(
+        phase: PomodoroPhase.paused,
+        lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    });
+    unawaited(_persistHomeState());
+  }
+
+  void _resumePomodoro() {
+    setState(() {
+      _pomodoro = _pomodoro.copyWith(
+        phase: PomodoroPhase.running,
+        lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    });
+    _startPomodoroTicker();
+    unawaited(_persistHomeState());
+  }
+
+  void _resetPomodoro() {
+    _pomodoroTimer?.cancel();
+    final totalSeconds = _settings.pomodoroMinutes * 60;
+    setState(() {
+      _pomodoro = _pomodoro.copyWith(
+        phase: PomodoroPhase.idle,
+        totalSeconds: totalSeconds,
+        remainingSeconds: totalSeconds,
+        completedSessions: 0,
+        totalSessions: _settings.sessionsPerRound,
+        lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      _appendNotification(
+        title: 'Pomodoro di-reset',
+        body: 'Sesi kembali ke awal.',
+      );
+    });
+    unawaited(_persistHomeState());
+  }
+
+  void _startPomodoroTicker() {
+    _pomodoroTimer?.cancel();
+    _pomodoroTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _pomodoro.phase != PomodoroPhase.running) {
+        _pomodoroTimer?.cancel();
+        return;
+      }
+
+      if (_pomodoro.remainingSeconds <= 1) {
+        _pomodoroTimer?.cancel();
+        setState(() {
+          final completed = (_pomodoro.completedSessions + 1)
+              .clamp(0, _settings.sessionsPerRound)
+              .toInt();
+          _applyXpGain(_settings.xpPerPomodoro);
+          final totalSeconds = _settings.pomodoroMinutes * 60;
+          final isRoundFinished = completed >= _settings.sessionsPerRound;
+          _pomodoro = _pomodoro.copyWith(
+            phase: isRoundFinished
+                ? PomodoroPhase.completed
+                : (_settings.autoStartNextSession
+                      ? PomodoroPhase.running
+                      : PomodoroPhase.paused),
+            totalSeconds: totalSeconds,
+            remainingSeconds: isRoundFinished ? 0 : totalSeconds,
+            completedSessions: completed,
+            totalSessions: _settings.sessionsPerRound,
+            lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+          );
+          _appendNotification(
+            title: isRoundFinished
+                ? 'Ronde Pomodoro selesai'
+                : 'Sesi Pomodoro selesai',
+            body: isRoundFinished
+                ? 'Semua target sesi tercapai hari ini.'
+                : 'Lanjut ke sesi ${completed + 1} saat siap.',
+          );
+        });
+        if (_pomodoro.phase == PomodoroPhase.running) {
+          _startPomodoroTicker();
+        }
+        unawaited(_persistHomeState());
+        return;
+      }
+
+      setState(() {
+        _pomodoro = _pomodoro.copyWith(
+          remainingSeconds: _pomodoro.remainingSeconds - 1,
+          lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+        );
+      });
+      if (_pomodoro.remainingSeconds % 5 == 0) {
+        unawaited(_persistHomeState());
+      }
+    });
+  }
+
+  Future<void> _addSchedule() async {
+    final result = await _openAddPlanSheet(
+      initialDate: _selectedDate,
+      initialStart: const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(result.date);
+      final item = _createScheduleFromSheet(result);
+      _schedules = [..._schedules, item];
+      _appendNotification(title: 'Schedule ditambahkan', body: item.title);
+    });
+    unawaited(_persistHomeState());
+  }
+
+  Future<void> _editSchedule(HomeScheduleItem item) async {
+    final result = await _openAddPlanSheet(
+      initialDate: item.startAt,
+      initialStart: TimeOfDay.fromDateTime(item.startAt),
+      initialTitle: item.title,
+      initialDurationMinutes: item.endAt.difference(item.startAt).inMinutes,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(result.date);
+      final updated = _createScheduleFromSheet(
+        result,
+        id: item.id,
+        priority: item.priority,
+        description: item.description,
+        rewardedXp: item.rewardedXp,
+        isCompleted: item.isCompleted,
+      );
+      _schedules = _schedules
+          .map((current) => current.id == item.id ? updated : current)
+          .toList();
+      _appendNotification(title: 'Schedule diperbarui', body: updated.title);
+    });
+    unawaited(_persistHomeState());
+  }
+
+  Future<void> _deleteSchedule(HomeScheduleItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus schedule?'),
+        content: Text('Schedule "${item.title}" akan dihapus permanen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _schedules = _schedules
+          .where((current) => current.id != item.id)
+          .toList();
+      _appendNotification(title: 'Schedule dihapus', body: item.title);
+    });
+    unawaited(_persistHomeState());
+  }
+
+  void _toggleScheduleComplete(HomeScheduleItem item) {
+    setState(() {
+      _schedules = _schedules.map((current) {
+        if (current.id != item.id) return current;
+        final nextCompleted = !current.isCompleted;
+        var updated = current.copyWith(isCompleted: nextCompleted);
+        if (nextCompleted && !current.rewardedXp) {
+          _applyXpGain(40);
+          updated = updated.copyWith(rewardedXp: true);
+          _appendNotification(
+            title: 'Task selesai',
+            body: '${current.title} (+40 XP)',
+          );
+        }
+        return updated;
+      }).toList();
+    });
+    unawaited(_persistHomeState());
+  }
+
+  Future<void> _openScheduleDetail(HomeScheduleItem item) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFFF8FBFF),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        final timeRange =
+            '${_formatHour(item.startAt)} - ${_formatHour(item.endAt)}';
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      color: _matchaMist,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: _matchaGold),
-                    ),
-                    child: const Icon(
-                      Icons.person_rounded,
-                      color: _matchaDeep,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'lingga',
-                          style: TextStyle(
-                            fontSize: 42 / 2,
-                            fontWeight: FontWeight.w700,
-                            color: _andrewInk,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            const Text(
-                              'LV 1',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _matchaMuted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFD9D2B0),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: FractionallySizedBox(
-                                  widthFactor: 0.48,
-                                  alignment: Alignment.centerLeft,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: _andrewTeal,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    child: Text(
+                      item.title,
+                      style: const TextStyle(
+                        color: Color(0xFF16233A),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Column(
-                    children: [
-                      const Text(
-                        'Rank',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _matchaMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: 40,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: _appWhite,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _matchaGold),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'E',
-                          style: TextStyle(
-                            color: Color(0xFF334155),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Center(
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 38,
-                  color: _andrewTeal,
+              Text(
+                timeRange,
+                style: const TextStyle(
+                  color: Color(0xFF6983A8),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 8),
+              Text(
+                item.description,
+                style: const TextStyle(color: Color(0xFF5D7398), height: 1.35),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Belum ada rencana',
-                      style: TextStyle(
-                        color: _matchaMuted,
-                        fontSize: 20 / 2,
-                        fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _toggleScheduleComplete(item);
+                      },
+                      icon: Icon(
+                        item.isCompleted
+                            ? Icons.undo_rounded
+                            : Icons.check_circle_outline_rounded,
                       ),
+                      label: Text(item.isCompleted ? 'Batalkan' : 'Selesai'),
                     ),
                   ),
-                  FilledButton.icon(
-                    onPressed: _startPomodoro,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _andrewTeal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _editSchedule(item);
+                      },
+                      icon: const Icon(Icons.edit_rounded),
+                      label: const Text('Edit'),
                     ),
-                    icon: const Icon(
-                      Icons.play_circle_filled_rounded,
-                      size: 18,
-                    ),
-                    label: const Text('Mulai Pomodoro'),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 70,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: visibleDays.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final day = visibleDays[index];
-                    final selected = _sameDay(day, _selectedDate);
-                    return InkWell(
-                      onTap: () => setState(() => _selectedDate = day),
-                      onLongPress: () {
-                        setState(() => _selectedDate = day);
-                        _openAddPlanSheet(initialDate: day);
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        width: 54,
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? _andrewSoftTeal.withOpacity(0.55)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _weekdayId(day),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: selected
-                                    ? _andrewTeal
-                                    : _matchaMuted,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? _andrewTeal
-                                    : _appWhite,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _matchaGold,
-                                ),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                '${day.day}',
-                                style: TextStyle(
-                                  color: selected
-                                      ? _appWhite
-                                      : const Color(0xFF243348),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16 / 2,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _goToPreviousDay() {
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(
+        _selectedDate.subtract(const Duration(days: 1)),
+      );
+    });
+    unawaited(_persistHomeState());
+  }
+
+  void _goToNextDay() {
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(
+        _selectedDate.add(const Duration(days: 1)),
+      );
+    });
+    unawaited(_persistHomeState());
+  }
+
+  Future<void> _pickDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(picked);
+    });
+    unawaited(_persistHomeState());
+  }
+
+  String _formatDateLabel(DateTime date) {
+    const weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${weekdays[(date.weekday - 1) % 7]}, ${months[date.month - 1]} ${date.day}';
+  }
+
+  String _formatHour(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const ColoredBox(
+        color: Color(0xFFF4F6FB),
+        child: SafeArea(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFFF4F6FB),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              HomeFocusTopSection(
+                title: 'Focus Mode',
+                subtitle: 'Level $_currentLevel Explorer',
+                currentXp: _currentXp,
+                targetXp: _targetXp,
+                progress: _xpProgress,
+                timerLabel: _timerLabel,
+                currentSession: _displaySession,
+                totalSession: _pomodoro.totalSessions,
+                onNotificationTap: () => unawaited(_openNotifications()),
+                onSettingsTap: () => unawaited(_openSettings()),
+                onPlayTap: _togglePomodoro,
+                onPlayLongPress: _resetPomodoro,
+                playIcon: _pomodoroActionIcon,
+                playTooltip: '$_pomodoroActionTooltip (tekan lama untuk reset)',
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
+              Container(height: 1, color: const Color(0xFFE4E9F1)),
+              const SizedBox(height: 18),
               Expanded(
                 child: SingleChildScrollView(
-                  child: SizedBox(
-                    height: gridHeight,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 68,
-                          child: Column(
-                            children: List.generate(totalRows, (i) {
-                              final hour = _gridStartHour + i;
-                              return Container(
-                                height: _hourRowHeight,
-                                alignment: Alignment.topCenter,
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  _hourLabel(hour),
-                                  style: const TextStyle(
-                                    color: Color(0xFF334155),
-                                    fontSize: 28 / 2,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTapDown: (details) {
-                              final selectedHour =
-                                  (_gridStartHour +
-                                          (details.localPosition.dy /
-                                                  _hourRowHeight)
-                                              .floor())
-                                      .clamp(_gridStartHour, _gridEndHour);
-                              _openAddPlanSheet(
-                                initialDate: _selectedDate,
-                                initialStart: TimeOfDay(
-                                  hour: selectedHour,
-                                  minute: 0,
-                                ),
-                              );
-                            },
-                            child: Stack(
-                              children: [
-                                Column(
-                                  children: List.generate(totalRows, (_) {
-                                    return Container(
-                                      height: _hourRowHeight,
-                                      decoration: const BoxDecoration(
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: _matchaMist,
-                                          ),
-                                          left: BorderSide(
-                                            color: Color(0xFFCCD6E6),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                                ...selectedPlans.map((p) {
-                                  return Positioned(
-                                    left: 8,
-                                    right: 8,
-                                    top: _blockTop(p),
-                                    child: Container(
-                                      height: _blockHeight(p),
-                                      padding: const EdgeInsets.fromLTRB(
-                                        10,
-                                        8,
-                                        10,
-                                        6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _andrewTeal,
-                                        borderRadius: BorderRadius.circular(10),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x2256661F),
-                                            blurRadius: 8,
-                                            offset: Offset(0, 3),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            p.title,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: _appWhite,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 26 / 2,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '${_two(p.start.hour)}:${_two(p.start.minute)} - ${_two(p.end.hour)}:${_two(p.end.minute)}',
-                                            style: const TextStyle(
-                                              color: Color(0xE6FFFFFF),
-                                              fontSize: 22 / 2,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: HomeScheduleTimelineSection(
+                    dateLabel: _formatDateLabel(_selectedDate),
+                    schedules: _schedulesForSelectedDay,
+                    onPreviousDay: _goToPreviousDay,
+                    onNextDay: _goToNextDay,
+                    onPickDay: () => unawaited(_pickDay()),
+                    onAddSchedule: () => unawaited(_addSchedule()),
+                    onScheduleTap: (item) =>
+                        unawaited(_openScheduleDetail(item)),
+                    onToggleCompleted: _toggleScheduleComplete,
+                    onEditSchedule: (item) => unawaited(_editSchedule(item)),
+                    onDeleteSchedule: (item) =>
+                        unawaited(_deleteSchedule(item)),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -2899,7 +3256,9 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
     super.initState();
     _date = widget.initialDate ?? DateTime.now();
     _start = widget.initialStart ?? TimeOfDay.now();
-    final duration = (widget.initialDurationMinutes ?? 60).clamp(5, 240);
+    final duration = (widget.initialDurationMinutes ?? 60)
+        .clamp(5, 240)
+        .toInt();
     _end = _addMinutes(_start, duration);
     if (widget.initialTitle != null && widget.initialTitle!.trim().isNotEmpty) {
       _titleController.text = widget.initialTitle!.trim();
@@ -3015,10 +3374,7 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
                       borderSide: BorderSide(color: Color(0xFFC8D1E0)),
                     ),
                     focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(
-                        color: _andrewTeal,
-                        width: 2,
-                      ),
+                      borderSide: BorderSide(color: _andrewTeal, width: 2),
                     ),
                   ),
                 ),
@@ -3168,7 +3524,9 @@ class _AddPlanSheetState extends State<_AddPlanSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? _andrewSoftTeal.withOpacity(0.5) : Colors.transparent,
+          color: selected
+              ? _andrewSoftTeal.withOpacity(0.5)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -3323,9 +3681,7 @@ class _CoachMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final alignment = isAndrew ? Alignment.centerLeft : Alignment.centerRight;
-    final background = isAndrew
-        ? _appWhite
-        : _andrewSoftTeal.withOpacity(0.8);
+    final background = isAndrew ? _appWhite : _andrewSoftTeal.withOpacity(0.8);
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -3612,9 +3968,9 @@ class _AndrewStreakTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   detail,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: _matchaMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: _matchaMuted),
                 ),
               ],
             ),

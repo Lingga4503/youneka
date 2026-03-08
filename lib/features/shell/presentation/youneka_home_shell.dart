@@ -84,108 +84,79 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
       backgroundColor: _shellSurface,
       body: IndexedStack(index: _selectedIndex, children: widget.pages),
       bottomNavigationBar: SizedBox(
-        height: 112 + bottomInset,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(14, 0, 14, 14 + bottomInset),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.bottomCenter,
-            children: [
-              Positioned.fill(
-                top: 30,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.14),
-                        blurRadius: 28,
-                        offset: const Offset(0, 14),
+        height: 96 + bottomInset,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.bottomCenter,
+          children: [
+            Positioned.fill(
+              top: 18,
+              child: ClipPath(
+                clipper: const _BottomBarClipper(),
+                child: Container(
+                  color: Colors.white,
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 8 + bottomInset),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _BottomNavItem(
+                          destination: _destinations[0],
+                          selected: _selectedIndex == 0,
+                          onTap: () => setState(() => _selectedIndex = 0),
+                        ),
+                      ),
+                      Expanded(
+                        child: _BottomNavItem(
+                          destination: _destinations[1],
+                          selected: _selectedIndex == 1,
+                          onTap: () => setState(() => _selectedIndex = 1),
+                        ),
+                      ),
+                      const SizedBox(width: 86),
+                      Expanded(
+                        child: _BottomNavItem(
+                          destination: _destinations[2],
+                          selected: _selectedIndex == 2,
+                          onTap: () => setState(() => _selectedIndex = 2),
+                        ),
+                      ),
+                      Expanded(
+                        child: _BottomNavItem(
+                          destination: _destinations[3],
+                          selected: _selectedIndex == 3,
+                          onTap: () => setState(() => _selectedIndex = 3),
+                        ),
                       ),
                     ],
                   ),
-                  child: ClipPath(
-                    clipper: const _BottomBarClipper(),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [_shellSurface, Color(0xFFE5EFFB)],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _BottomNavItem(
-                                destination: _destinations[0],
-                                selected: _selectedIndex == 0,
-                                onTap: () => setState(() => _selectedIndex = 0),
-                              ),
-                            ),
-                            Expanded(
-                              child: _BottomNavItem(
-                                destination: _destinations[1],
-                                selected: _selectedIndex == 1,
-                                onTap: () => setState(() => _selectedIndex = 1),
-                              ),
-                            ),
-                            const SizedBox(width: 86),
-                            Expanded(
-                              child: _BottomNavItem(
-                                destination: _destinations[2],
-                                selected: _selectedIndex == 2,
-                                onTap: () => setState(() => _selectedIndex = 2),
-                              ),
-                            ),
-                            Expanded(
-                              child: _BottomNavItem(
-                                destination: _destinations[3],
-                                selected: _selectedIndex == 3,
-                                onTap: () => setState(() => _selectedIndex = 3),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -10,
+              child: GestureDetector(
+                onTap: _openQuickActions,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [_shellAccent, _shellAccentDeep],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    border: Border.all(color: Colors.white, width: 5),
+                  ),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 36,
                   ),
                 ),
               ),
-              Positioned(
-                top: -12,
-                child: GestureDetector(
-                  onTap: _openQuickActions,
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [_shellAccent, _shellAccentDeep],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(color: _shellSurface, width: 5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _shellAccent.withValues(alpha: 0.34),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.add_rounded,
-                      color: _shellSurface,
-                      size: 36,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
