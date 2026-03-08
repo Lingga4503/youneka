@@ -9,22 +9,28 @@ class HomeScheduleTimelineSection extends StatelessWidget {
     super.key,
     required this.selectedDate,
     required this.schedules,
+    required this.quickCreateStartAt,
+    required this.quickCreateTitleController,
+    required this.quickCreateTitleFocusNode,
     required this.onSelectDate,
+    required this.onShiftWeek,
     required this.onCreateScheduleAt,
     required this.onScheduleTap,
-    required this.onToggleCompleted,
-    required this.onEditSchedule,
-    required this.onDeleteSchedule,
+    required this.onQuickCreateDismiss,
+    required this.onQuickCreateSave,
   });
 
   final DateTime selectedDate;
   final List<HomeScheduleItem> schedules;
+  final DateTime? quickCreateStartAt;
+  final TextEditingController quickCreateTitleController;
+  final FocusNode quickCreateTitleFocusNode;
   final ValueChanged<DateTime> onSelectDate;
+  final ValueChanged<int> onShiftWeek;
   final ValueChanged<DateTime> onCreateScheduleAt;
   final ValueChanged<HomeScheduleItem> onScheduleTap;
-  final ValueChanged<HomeScheduleItem> onToggleCompleted;
-  final ValueChanged<HomeScheduleItem> onEditSchedule;
-  final ValueChanged<HomeScheduleItem> onDeleteSchedule;
+  final VoidCallback onQuickCreateDismiss;
+  final VoidCallback onQuickCreateSave;
 
   static const double _hourHeight = 58;
   static const double _timeColumnWidth = 40;
@@ -40,7 +46,11 @@ class HomeScheduleTimelineSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _WeekDayStrip(selectedDate: selectedDate, onSelectDate: onSelectDate),
+        _WeekDayStrip(
+          selectedDate: selectedDate,
+          onSelectDate: onSelectDate,
+          onShiftWeek: onShiftWeek,
+        ),
         const SizedBox(height: 8),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -82,9 +92,18 @@ class HomeScheduleTimelineSection extends StatelessWidget {
                       canvasWidth: canvasWidth,
                       hourHeight: _hourHeight,
                       onTap: () => onScheduleTap(item),
-                      onToggleDone: () => onToggleCompleted(item),
-                      onEdit: () => onEditSchedule(item),
-                      onDelete: () => onDeleteSchedule(item),
+                    ),
+                  if (quickCreateStartAt != null)
+                    _PositionedQuickCreateComposer(
+                      startAt: quickCreateStartAt!,
+                      topPadding: _canvasTopPadding,
+                      canvasLeft: canvasLeft,
+                      canvasWidth: canvasWidth,
+                      hourHeight: _hourHeight,
+                      titleController: quickCreateTitleController,
+                      titleFocusNode: quickCreateTitleFocusNode,
+                      onDismiss: onQuickCreateDismiss,
+                      onSave: onQuickCreateSave,
                     ),
                 ],
               ),
@@ -97,10 +116,15 @@ class HomeScheduleTimelineSection extends StatelessWidget {
 }
 
 class _WeekDayStrip extends StatelessWidget {
-  const _WeekDayStrip({required this.selectedDate, required this.onSelectDate});
+  const _WeekDayStrip({
+    required this.selectedDate,
+    required this.onSelectDate,
+    required this.onShiftWeek,
+  });
 
   final DateTime selectedDate;
   final ValueChanged<DateTime> onSelectDate;
+  final ValueChanged<int> onShiftWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -111,21 +135,33 @@ class _WeekDayStrip extends StatelessWidget {
       (index) => DateUtils.dateOnly(startOfWeek.add(Duration(days: index))),
     );
 
-    return SizedBox(
-      height: 68,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (context, index) {
-          final day = days[index];
-          final isSelected = DateUtils.isSameDay(day, selected);
-          return _DayPill(
-            date: day,
-            selected: isSelected,
-            onTap: () => onSelectDate(day),
-          );
-        },
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity <= -120) {
+          onShiftWeek(1);
+        } else if (velocity >= 120) {
+          onShiftWeek(-1);
+        }
+      },
+      child: SizedBox(
+        height: 68,
+        child: ListView.separated(
+          physics: const NeverScrollableScrollPhysics(),
+          scrollDirection: Axis.horizontal,
+          itemCount: days.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          itemBuilder: (context, index) {
+            final day = days[index];
+            final isSelected = DateUtils.isSameDay(day, selected);
+            return _DayPill(
+              date: day,
+              selected: isSelected,
+              onTap: () => onSelectDate(day),
+            );
+          },
+        ),
       ),
     );
   }
@@ -314,9 +350,6 @@ class _PositionedScheduleCard extends StatelessWidget {
     required this.canvasWidth,
     required this.hourHeight,
     required this.onTap,
-    required this.onToggleDone,
-    required this.onEdit,
-    required this.onDelete,
   });
 
   final HomeScheduleItem item;
@@ -326,9 +359,6 @@ class _PositionedScheduleCard extends StatelessWidget {
   final double canvasWidth;
   final double hourHeight;
   final VoidCallback onTap;
-  final VoidCallback onToggleDone;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -342,31 +372,276 @@ class _PositionedScheduleCard extends StatelessWidget {
       width: math.max(0, canvasWidth - 8),
       top: top,
       height: height,
-      child: _ScheduleCanvasCard(
-        item: item,
-        onTap: onTap,
-        onToggleDone: onToggleDone,
-        onEdit: onEdit,
-        onDelete: onDelete,
+      child: _ScheduleCanvasCard(item: item, onTap: onTap),
+    );
+  }
+}
+
+class _PositionedQuickCreateComposer extends StatelessWidget {
+  const _PositionedQuickCreateComposer({
+    required this.startAt,
+    required this.topPadding,
+    required this.canvasLeft,
+    required this.canvasWidth,
+    required this.hourHeight,
+    required this.titleController,
+    required this.titleFocusNode,
+    required this.onDismiss,
+    required this.onSave,
+  });
+
+  final DateTime startAt;
+  final double topPadding;
+  final double canvasLeft;
+  final double canvasWidth;
+  final double hourHeight;
+  final TextEditingController titleController;
+  final FocusNode titleFocusNode;
+  final VoidCallback onDismiss;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final startMinutes = (startAt.hour * 60) + startAt.minute;
+    final rawTop = topPadding + ((startMinutes / 60) * hourHeight);
+    final safeWidth = canvasWidth <= 0
+        ? 0.0
+        : math
+              .max(
+                0.0,
+                math.min(math.max(220.0, canvasWidth * 0.84), canvasWidth - 8),
+              )
+              .toDouble();
+    final isCompact = safeWidth < 252;
+    final composerHeight = isCompact ? 182.0 : 160.0;
+    final maxTop = topPadding + (hourHeight * 24) - composerHeight - 6;
+    final safeTop = rawTop
+        .clamp(topPadding + 2, math.max(topPadding + 2, maxTop))
+        .toDouble();
+
+    return Positioned(
+      left: canvasLeft + 6,
+      top: safeTop,
+      width: safeWidth,
+      height: composerHeight,
+      child: _QuickCreateComposerCard(
+        startAt: startAt,
+        titleController: titleController,
+        titleFocusNode: titleFocusNode,
+        isCompact: isCompact,
+        onDismiss: onDismiss,
+        onSave: onSave,
       ),
     );
   }
 }
 
-class _ScheduleCanvasCard extends StatelessWidget {
-  const _ScheduleCanvasCard({
-    required this.item,
-    required this.onTap,
-    required this.onToggleDone,
-    required this.onEdit,
-    required this.onDelete,
+class _QuickCreateComposerCard extends StatelessWidget {
+  const _QuickCreateComposerCard({
+    required this.startAt,
+    required this.titleController,
+    required this.titleFocusNode,
+    required this.isCompact,
+    required this.onDismiss,
+    required this.onSave,
   });
+
+  final DateTime startAt;
+  final TextEditingController titleController;
+  final FocusNode titleFocusNode;
+  final bool isCompact;
+  final VoidCallback onDismiss;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final endAt = startAt.add(const Duration(hours: 1));
+    return Material(
+      color: Colors.transparent,
+      elevation: 0,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(12, 10, 12, isCompact ? 8 : 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBFDFF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFDCE5F1)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1A2B47).withValues(alpha: 0.14),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.drag_handle_rounded,
+                  size: 18,
+                  color: Color(0xFF7B8CA7),
+                ),
+                const Spacer(),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: onDismiss,
+                  child: const Padding(
+                    padding: EdgeInsets.all(2),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFF66778F),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            TextField(
+              controller: titleController,
+              focusNode: titleFocusNode,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => onSave(),
+              style: TextStyle(
+                color: Color(0xFF31445F),
+                fontWeight: FontWeight.w600,
+                fontSize: isCompact ? 14 : 15,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Add title',
+                hintStyle: TextStyle(
+                  color: Color(0xFF8D9DB5),
+                  fontWeight: FontWeight.w500,
+                  fontSize: isCompact ? 14 : 15,
+                ),
+                contentPadding: const EdgeInsets.only(bottom: 6),
+                border: InputBorder.none,
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFD4DDEA)),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF2563EB), width: 2),
+                ),
+              ),
+            ),
+            SizedBox(height: isCompact ? 8 : 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(
+                    Icons.schedule_rounded,
+                    size: 17,
+                    color: Color(0xFF6F8098),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _quickCreateDateRangeText(startAt, endAt),
+                        maxLines: isCompact ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF40536F),
+                          fontWeight: FontWeight.w600,
+                          fontSize: isCompact ? 11 : 11.5,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Time zone | Does not repeat',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF8C9DB3),
+                          fontWeight: FontWeight.w500,
+                          fontSize: isCompact ? 10 : 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: isCompact ? 6 : 10),
+            Row(
+              children: [
+                const Spacer(),
+                FilledButton(
+                  onPressed: onSave,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
+                    minimumSize: Size(0, isCompact ? 30 : 32),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Text(
+                    'Save',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: isCompact ? 11.5 : 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _quickCreateDateRangeText(DateTime startAt, DateTime endAt) {
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    final weekday = weekdays[(startAt.weekday - 1) % 7];
+    final month = months[startAt.month - 1];
+    return '$weekday, $month ${startAt.day}  ${_formatTime(startAt)} - ${_formatTime(endAt)}';
+  }
+
+  static String _formatTime(DateTime value) {
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final suffix = value.hour < 12 ? 'AM' : 'PM';
+    return '$hour:$minute$suffix';
+  }
+}
+
+class _ScheduleCanvasCard extends StatelessWidget {
+  const _ScheduleCanvasCard({required this.item, required this.onTap});
 
   final HomeScheduleItem item;
   final VoidCallback onTap;
-  final VoidCallback onToggleDone;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +658,6 @@ class _ScheduleCanvasCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(15),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(
           color: item.isCompleted
               ? const Color(0xFFF0F4FA)
@@ -404,99 +678,97 @@ class _ScheduleCanvasCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 4,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: isHighlighted
-                    ? const Color(0xFF2563EB)
-                    : const Color(0xFFBFCBDC),
-                borderRadius: BorderRadius.circular(99),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableHeight = constraints.maxHeight;
+            final isTight = availableHeight < 52;
+            final isCompact = availableHeight < 66;
+            final bodyText = item.location?.trim().isNotEmpty == true
+                ? item.location!
+                : item.description;
+            final subtitleLines = isCompact ? 1 : 2;
+            final horizontalPadding = isCompact ? 7.0 : 8.0;
+            final verticalPadding = isCompact ? 5.0 : 6.0;
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                verticalPadding,
+                horizontalPadding,
+                verticalPadding,
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: titleColor,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      decoration: item.isCompleted
-                          ? TextDecoration.lineThrough
-                          : null,
+                  Container(
+                    width: 4,
+                    height: double.infinity,
+                    decoration: BoxDecoration(
+                      color: isHighlighted
+                          ? const Color(0xFF2563EB)
+                          : const Color(0xFFBFCBDC),
+                      borderRadius: BorderRadius.circular(99),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.location?.trim().isNotEmpty == true
-                        ? item.location!
-                        : item.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: subColor,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 10.5,
-                      height: 1.2,
-                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: isTight
+                        ? Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: titleColor,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12.5,
+                                decoration: item.isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: titleColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: isCompact ? 12.5 : 13,
+                                  decoration: item.isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
+                              ),
+                              if (bodyText.trim().isNotEmpty) ...[
+                                SizedBox(height: isCompact ? 1 : 2),
+                                Flexible(
+                                  child: Text(
+                                    bodyText,
+                                    maxLines: subtitleLines,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: subColor,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: isCompact ? 10 : 10.5,
+                                      height: 1.15,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 20,
-                    height: 20,
-                  ),
-                  tooltip: item.isCompleted
-                      ? 'Batalkan selesai'
-                      : 'Tandai selesai',
-                  onPressed: onToggleDone,
-                  icon: Icon(
-                    item.isCompleted
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 15,
-                    color: item.isCompleted
-                        ? const Color(0xFF2B67D9)
-                        : const Color(0xFFA2B4CE),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  padding: EdgeInsets.zero,
-                  tooltip: 'Aksi jadwal',
-                  constraints: const BoxConstraints.tightFor(
-                    width: 20,
-                    height: 20,
-                  ),
-                  icon: const Icon(Icons.more_horiz_rounded, size: 15),
-                  onSelected: (value) {
-                    if (value == 'edit') onEdit();
-                    if (value == 'delete') onDelete();
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    PopupMenuItem(value: 'delete', child: Text('Hapus')),
-                  ],
-                ),
-              ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

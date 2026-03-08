@@ -13,6 +13,7 @@ import 'data/home_state_storage.dart';
 import 'domain/models/home_models.dart';
 import 'presentation/pages/home_notifications_page.dart';
 import 'presentation/pages/home_settings_page.dart';
+import 'presentation/pages/template_library_page.dart';
 import 'presentation/widgets/home_focus_top_section.dart';
 import 'presentation/widgets/home_schedule_timeline_section.dart';
 import '../mentor/presentation/mentor_chat_popup_dialog.dart';
@@ -1930,12 +1931,13 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  static const List<Widget> _pages = [
-    _AndrewPlanPage(),
-    _AndrewHomePage(),
-    _AndrewCoachPage(),
-    _AndrewProfilePage(),
-  ];
+  final ValueNotifier<int?> _tabRequestNotifier = ValueNotifier<int?>(null);
+
+  @override
+  void dispose() {
+    _tabRequestNotifier.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleSidebarAction(String action) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -2045,17 +2047,33 @@ class _AppRootState extends State<AppRoot> {
     );
   }
 
+  Future<void> _handleTemplateUse(PlanTemplatePreset preset) async {
+    _tabRequestNotifier.value = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PlanTemplateBridge.push(preset);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pages = <Widget>[
+      const _AndrewPlanPage(),
+      TemplateLibraryPage(onUseTemplate: _handleTemplateUse),
+      const _AndrewCoachPage(),
+      const _AndrewProfilePage(),
+    ];
+
     return YounekaHomeShell(
-      pages: _pages,
+      pages: pages,
       initialIndex: 0,
       onSidebarAction: _handleSidebarAction,
       onMentorTap: () => _openMentorChatPopup(),
+      tabRequestNotifier: _tabRequestNotifier,
     );
   }
 }
 
+// ignore: unused_element
 class _AndrewHomePage extends StatelessWidget {
   const _AndrewHomePage();
 
@@ -2401,11 +2419,14 @@ class _PomodoroUiSnapshot {
   final int totalSessions;
 }
 
-class _AndrewPlanPageState extends State<_AndrewPlanPage> {
+class _AndrewPlanPageState extends State<_AndrewPlanPage>
+    with WidgetsBindingObserver {
   late DateTime _selectedDate;
   HomeSettings _settings = HomeSettings.defaults;
   PomodoroRuntime _pomodoro = PomodoroRuntime.initial(HomeSettings.defaults);
   late final ValueNotifier<_PomodoroUiSnapshot> _pomodoroUi;
+  late final TextEditingController _quickCreateTitleController;
+  late final FocusNode _quickCreateTitleFocusNode;
   List<HomeScheduleItem> _schedules = <HomeScheduleItem>[];
   List<HomeScheduleItem> _selectedDaySchedules = <HomeScheduleItem>[];
   List<HomeNotificationItem> _notifications = <HomeNotificationItem>[];
@@ -2417,24 +2438,38 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
   bool _isLoading = true;
   int _lastTemplateToken = -1;
   int _idCounter = 0;
+  DateTime? _quickCreateStartAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedDate = DateUtils.dateOnly(DateTime.now());
     _pomodoroUi = ValueNotifier<_PomodoroUiSnapshot>(_buildPomodoroUi());
+    _quickCreateTitleController = TextEditingController();
+    _quickCreateTitleFocusNode = FocusNode();
     PlanTemplateBridge.selectionNotifier.addListener(_onTemplateSelected);
     _loadHomeState();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pomodoroTimer?.cancel();
     _persistDebounceTimer?.cancel();
     unawaited(_persistHomeStateNow());
     _pomodoroUi.dispose();
+    _quickCreateTitleController.dispose();
+    _quickCreateTitleFocusNode.dispose();
     PlanTemplateBridge.selectionNotifier.removeListener(_onTemplateSelected);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncSelectedDateToToday();
+    }
   }
 
   _PomodoroUiSnapshot _buildPomodoroUi() {
@@ -2460,6 +2495,91 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
           ..sort((a, b) => a.startAt.compareTo(b.startAt));
   }
 
+  void _syncSelectedDateToToday({bool persist = false}) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (DateUtils.isSameDay(_selectedDate, today)) return;
+    setState(() {
+      _selectedDate = today;
+      _quickCreateStartAt = null;
+      _quickCreateTitleController.clear();
+      _refreshSelectedDaySchedules();
+    });
+    _quickCreateTitleFocusNode.unfocus();
+    if (persist) {
+      _queuePersist();
+    }
+  }
+
+  void _openQuickCreateComposer(DateTime startAt, {String? initialTitle}) {
+    final normalizedDate = DateUtils.dateOnly(startAt);
+    final normalizedStartAt = DateTime(
+      normalizedDate.year,
+      normalizedDate.month,
+      normalizedDate.day,
+      startAt.hour,
+      startAt.minute,
+    );
+    setState(() {
+      _selectedDate = normalizedDate;
+      _quickCreateStartAt = normalizedStartAt;
+      _quickCreateTitleController.text = initialTitle?.trim() ?? '';
+      _refreshSelectedDaySchedules();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _quickCreateStartAt == null) return;
+      _quickCreateTitleFocusNode.requestFocus();
+      _quickCreateTitleController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _quickCreateTitleController.text.length,
+      );
+    });
+  }
+
+  void _dismissQuickCreateComposer() {
+    if (_quickCreateStartAt == null &&
+        _quickCreateTitleController.text.isEmpty) {
+      return;
+    }
+    setState(() {
+      _quickCreateStartAt = null;
+      _quickCreateTitleController.clear();
+    });
+    _quickCreateTitleFocusNode.unfocus();
+  }
+
+  HomeScheduleItem _createQuickScheduleItem() {
+    final startAt =
+        _quickCreateStartAt ??
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 9);
+    final rawTitle = _quickCreateTitleController.text.trim();
+    final title = rawTitle.isEmpty ? 'Tanpa judul' : rawTitle;
+    return HomeScheduleItem(
+      id: 'sch_${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}',
+      title: title,
+      description: 'Kegiatan terjadwal',
+      startAt: startAt,
+      endAt: startAt.add(const Duration(hours: 1)),
+      priority: SchedulePriority.medium,
+      isCompleted: false,
+      rewardedXp: false,
+    );
+  }
+
+  void _saveQuickCreateComposer() {
+    if (_quickCreateStartAt == null) return;
+    final item = _createQuickScheduleItem();
+    setState(() {
+      _selectedDate = DateUtils.dateOnly(item.startAt);
+      _schedules = [..._schedules, item];
+      _quickCreateStartAt = null;
+      _quickCreateTitleController.clear();
+      _refreshSelectedDaySchedules();
+      _appendNotification(title: 'Schedule ditambahkan', body: item.title);
+    });
+    _quickCreateTitleFocusNode.unfocus();
+    _queuePersist();
+  }
+
   Future<void> _loadHomeState() async {
     final snapshot = await HomeStateStorage.load();
     if (!mounted) return;
@@ -2482,8 +2602,9 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
       runtime: snapshot.pomodoro,
       settings: snapshot.settings,
     );
+    final today = DateUtils.dateOnly(DateTime.now());
     setState(() {
-      _selectedDate = DateUtils.dateOnly(snapshot.selectedDate);
+      _selectedDate = today;
       _settings = snapshot.settings;
       _pomodoro = reconciledPomodoro;
       _schedules = [...snapshot.schedules];
@@ -2947,25 +3068,6 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     });
   }
 
-  Future<void> _addSchedule([DateTime? initialDateTime]) async {
-    final baseDateTime =
-        initialDateTime ??
-        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 9);
-    final result = await _openAddPlanSheet(
-      initialDate: baseDateTime,
-      initialStart: TimeOfDay.fromDateTime(baseDateTime),
-    );
-    if (result == null || !mounted) return;
-    setState(() {
-      _selectedDate = DateUtils.dateOnly(result.date);
-      final item = _createScheduleFromSheet(result);
-      _schedules = [..._schedules, item];
-      _refreshSelectedDaySchedules();
-      _appendNotification(title: 'Schedule ditambahkan', body: item.title);
-    });
-    _queuePersist();
-  }
-
   Future<void> _editSchedule(HomeScheduleItem item) async {
     final result = await _openAddPlanSheet(
       initialDate: item.startAt,
@@ -3047,79 +3149,127 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFFF8FBFF),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) {
         final timeRange =
             '${_formatHour(item.startAt)} - ${_formatHour(item.endAt)}';
+        final dayLabel = DateUtils.isSameDay(item.startAt, DateTime.now())
+            ? 'Hari ini'
+            : '${item.startAt.day}/${item.startAt.month}/${item.startAt.year}';
+        final cardColor = item.priority == SchedulePriority.high
+            ? const Color(0xFF2563EB)
+            : const Color(0xFF6F98DC);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.title,
-                      style: const TextStyle(
-                        color: Color(0xFF16233A),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 20,
-                      ),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            18,
+            18,
+            24 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _SheetActionIcon(
+                      icon: Icons.close_rounded,
+                      onTap: () => Navigator.pop(context),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              Text(
-                timeRange,
-                style: const TextStyle(
-                  color: Color(0xFF6983A8),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                item.description,
-                style: const TextStyle(color: Color(0xFF5D7398), height: 1.35),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
+                    const Spacer(),
+                    _SheetActionIcon(
+                      icon: item.isCompleted
+                          ? Icons.undo_rounded
+                          : Icons.check_circle_outline_rounded,
+                      onTap: () {
                         Navigator.pop(context);
                         _toggleScheduleComplete(item);
                       },
-                      icon: Icon(
-                        item.isCompleted
-                            ? Icons.undo_rounded
-                            : Icons.check_circle_outline_rounded,
-                      ),
-                      label: Text(item.isCompleted ? 'Batalkan' : 'Selesai'),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
+                    const SizedBox(width: 10),
+                    _SheetActionIcon(
+                      icon: Icons.edit_rounded,
+                      onTap: () {
                         Navigator.pop(context);
                         _editSchedule(item);
                       },
-                      icon: const Icon(Icons.edit_rounded),
-                      label: const Text('Edit'),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 10),
+                    _SheetActionIcon(
+                      icon: Icons.delete_outline_rounded,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _deleteSchedule(item);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 18,
+                      height: 18,
+                      margin: const EdgeInsets.only(top: 6),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            style: const TextStyle(
+                              color: Color(0xFF16233A),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 21,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '$dayLabel • $timeRange',
+                            style: const TextStyle(
+                              color: Color(0xFF5F769B),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _ScheduleDetailRow(
+                  icon: Icons.notes_rounded,
+                  title: item.description,
+                  subtitle: item.isCompleted
+                      ? 'Status: selesai'
+                      : 'Status: belum selesai',
+                ),
+                _ScheduleDetailRow(
+                  icon: Icons.notifications_none_rounded,
+                  title: '30 menit sebelumnya',
+                  subtitle: 'Pengingat schedule',
+                ),
+                _ScheduleDetailRow(
+                  icon: Icons.calendar_month_outlined,
+                  title: 'Kalender saya',
+                  subtitle: item.location?.trim().isNotEmpty == true
+                      ? item.location!
+                      : 'Youneka personal calendar',
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -3131,8 +3281,26 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     if (DateUtils.isSameDay(_selectedDate, picked)) return;
     setState(() {
       _selectedDate = picked;
+      _quickCreateStartAt = null;
+      _quickCreateTitleController.clear();
       _refreshSelectedDaySchedules();
     });
+    _quickCreateTitleFocusNode.unfocus();
+    _queuePersist();
+  }
+
+  void _shiftWeek(int direction) {
+    if (direction == 0) return;
+    final target = DateUtils.dateOnly(
+      _selectedDate.add(Duration(days: 7 * direction)),
+    );
+    setState(() {
+      _selectedDate = target;
+      _quickCreateStartAt = null;
+      _quickCreateTitleController.clear();
+      _refreshSelectedDaySchedules();
+    });
+    _quickCreateTitleFocusNode.unfocus();
     _queuePersist();
   }
 
@@ -3165,12 +3333,15 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                   final safeTotalSessions = pomodoroUi.totalSessions <= 0
                       ? 1
                       : pomodoroUi.totalSessions;
-                  final displaySession =
-                      pomodoroUi.completedSessions +
-                      (pomodoroUi.phase == PomodoroPhase.completed ? 0 : 1);
-                  final sessionLabel = displaySession
-                      .clamp(1, safeTotalSessions)
+                  final safeCompletedSessions = pomodoroUi.completedSessions
+                      .clamp(0, safeTotalSessions)
                       .toInt();
+                  final sessionLabel = switch (pomodoroUi.phase) {
+                    PomodoroPhase.idle => 0,
+                    PomodoroPhase.completed => safeTotalSessions,
+                    PomodoroPhase.running || PomodoroPhase.paused =>
+                      (safeCompletedSessions + 1).clamp(1, safeTotalSessions),
+                  };
                   final total = pomodoroUi.remainingSeconds
                       .clamp(0, 359999)
                       .toInt();
@@ -3180,11 +3351,39 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                   final actionIcon = pomodoroUi.phase == PomodoroPhase.running
                       ? Icons.pause_rounded
                       : Icons.play_arrow_rounded;
+                  final perSessionProgress = pomodoroUi.totalSeconds <= 0
+                      ? 0.0
+                      : (1 -
+                                (pomodoroUi.remainingSeconds /
+                                    pomodoroUi.totalSeconds))
+                            .clamp(0.0, 1.0);
+                  final sessionProgresses = List<double>.generate(
+                    safeTotalSessions,
+                    (index) {
+                      if (index < safeCompletedSessions) return 1.0;
+                      if (pomodoroUi.phase == PomodoroPhase.completed) {
+                        return 1.0;
+                      }
+                      if (pomodoroUi.phase == PomodoroPhase.running ||
+                          pomodoroUi.phase == PomodoroPhase.paused) {
+                        return index == safeCompletedSessions
+                            ? perSessionProgress
+                            : 0.0;
+                      }
+                      return 0.0;
+                    },
+                  );
                   final actionTooltip = switch (pomodoroUi.phase) {
                     PomodoroPhase.running => 'Pause Pomodoro',
                     PomodoroPhase.paused => 'Resume Pomodoro',
                     PomodoroPhase.completed => 'Mulai ronde baru',
                     PomodoroPhase.idle => 'Mulai Pomodoro',
+                  };
+                  final phaseLabel = switch (pomodoroUi.phase) {
+                    PomodoroPhase.running => 'Sedang fokus',
+                    PomodoroPhase.paused => 'Dijeda',
+                    PomodoroPhase.completed => 'Ronde selesai',
+                    PomodoroPhase.idle => 'Siap dimulai',
                   };
 
                   return HomeFocusTopSection(
@@ -3196,6 +3395,8 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                     timerLabel: timerLabel,
                     currentSession: sessionLabel,
                     totalSession: safeTotalSessions,
+                    phaseLabel: phaseLabel,
+                    sessionProgresses: sessionProgresses,
                     onNotificationTap: () => unawaited(_openNotifications()),
                     onSettingsTap: () => unawaited(_openSettings()),
                     onPlayTap: _togglePomodoro,
@@ -3213,15 +3414,16 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                   child: HomeScheduleTimelineSection(
                     selectedDate: _selectedDate,
                     schedules: _selectedDaySchedules,
+                    quickCreateStartAt: _quickCreateStartAt,
+                    quickCreateTitleController: _quickCreateTitleController,
+                    quickCreateTitleFocusNode: _quickCreateTitleFocusNode,
                     onSelectDate: _selectDate,
-                    onCreateScheduleAt: (dateTime) =>
-                        unawaited(_addSchedule(dateTime)),
+                    onShiftWeek: _shiftWeek,
+                    onCreateScheduleAt: _openQuickCreateComposer,
                     onScheduleTap: (item) =>
                         unawaited(_openScheduleDetail(item)),
-                    onToggleCompleted: _toggleScheduleComplete,
-                    onEditSchedule: (item) => unawaited(_editSchedule(item)),
-                    onDeleteSchedule: (item) =>
-                        unawaited(_deleteSchedule(item)),
+                    onQuickCreateDismiss: _dismissQuickCreateComposer,
+                    onQuickCreateSave: _saveQuickCreateComposer,
                   ),
                 ),
               ),
@@ -4157,6 +4359,82 @@ class _ProfileInfoCard extends StatelessWidget {
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: _matchaMuted, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetActionIcon extends StatelessWidget {
+  const _SheetActionIcon({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        width: 44,
+        height: 44,
+        decoration: const BoxDecoration(
+          color: Color(0xFFE7EDF8),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: _andrewInk),
+      ),
+    );
+  }
+}
+
+class _ScheduleDetailRow extends StatelessWidget {
+  const _ScheduleDetailRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Icon(icon, color: const Color(0xFF5F769B), size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF16233A),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF7A8EAB),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

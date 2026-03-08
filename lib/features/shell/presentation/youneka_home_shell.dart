@@ -15,12 +15,14 @@ class YounekaHomeShell extends StatefulWidget {
     required this.onSidebarAction,
     required this.onMentorTap,
     this.initialIndex = 0,
+    this.tabRequestNotifier,
   });
 
   final List<Widget> pages;
   final Future<void> Function(String action) onSidebarAction;
   final VoidCallback onMentorTap;
   final int initialIndex;
+  final ValueNotifier<int?>? tabRequestNotifier;
 
   @override
   State<YounekaHomeShell> createState() => _YounekaHomeShellState();
@@ -32,7 +34,10 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
 
   static const List<_ShellDestination> _destinations = [
     _ShellDestination(label: 'Beranda', icon: Icons.home_rounded),
-    _ShellDestination(label: 'Andrew', icon: Icons.auto_awesome_rounded),
+    _ShellDestination(
+      label: 'Template',
+      icon: Icons.dashboard_customize_rounded,
+    ),
     _ShellDestination(label: 'Coach', icon: Icons.self_improvement_rounded),
     _ShellDestination(label: 'Profil', icon: Icons.person_rounded),
   ];
@@ -47,11 +52,16 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     if (_loadedTabs.isNotEmpty) {
       _loadedTabs[_selectedIndex] = true;
     }
+    widget.tabRequestNotifier?.addListener(_handleExternalTabRequest);
   }
 
   @override
   void didUpdateWidget(covariant YounekaHomeShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.tabRequestNotifier != widget.tabRequestNotifier) {
+      oldWidget.tabRequestNotifier?.removeListener(_handleExternalTabRequest);
+      widget.tabRequestNotifier?.addListener(_handleExternalTabRequest);
+    }
     if (oldWidget.pages.length != widget.pages.length) {
       final next = List<bool>.filled(widget.pages.length, false);
       final limit = oldWidget.pages.length < widget.pages.length
@@ -67,6 +77,12 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
       }
       _loadedTabs = next;
     }
+  }
+
+  @override
+  void dispose() {
+    widget.tabRequestNotifier?.removeListener(_handleExternalTabRequest);
+    super.dispose();
   }
 
   Future<void> _openQuickActions() async {
@@ -89,6 +105,17 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     );
   }
 
+  void _handleExternalTabRequest() {
+    final target = widget.tabRequestNotifier?.value;
+    if (target == null || target < 0 || target >= widget.pages.length) return;
+    if (!mounted) return;
+    setState(() {
+      _selectedIndex = target;
+      _loadedTabs[target] = true;
+    });
+    widget.tabRequestNotifier?.value = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -109,18 +136,18 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
         }),
       ),
       bottomNavigationBar: SizedBox(
-        height: 96 + bottomInset,
+        height: 116 + bottomInset,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
             Positioned.fill(
-              top: 26,
+              top: 40,
               child: ClipPath(
                 clipper: const _BottomBarClipper(),
                 child: Container(
                   color: Colors.white,
-                  padding: EdgeInsets.fromLTRB(20, 16, 20, 8 + bottomInset),
+                  padding: EdgeInsets.fromLTRB(20, 14, 20, 8 + bottomInset),
                   child: Row(
                     children: [
                       Expanded(
@@ -158,7 +185,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
               ),
             ),
             Positioned(
-              top: 2,
+              top: 18,
               child: GestureDetector(
                 onTap: widget.onMentorTap,
                 onLongPress: _openQuickActions,
@@ -499,25 +526,25 @@ class _BottomBarClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-    final notchHalfWidth = size.width * 0.19;
-    const notchDepth = 42.0;
+    final notchHalfWidth = size.width * 0.195;
+    const notchDepth = 50.0;
     const corner = 26.0;
 
     path.moveTo(0, corner);
     path.quadraticBezierTo(0, 0, corner, 0);
     path.lineTo(size.width / 2 - notchHalfWidth, 0);
     path.cubicTo(
-      size.width / 2 - notchHalfWidth * 0.68,
+      size.width / 2 - notchHalfWidth * 0.74,
       0,
-      size.width / 2 - notchHalfWidth * 0.48,
+      size.width / 2 - notchHalfWidth * 0.5,
       notchDepth,
       size.width / 2,
       notchDepth,
     );
     path.cubicTo(
-      size.width / 2 + notchHalfWidth * 0.48,
+      size.width / 2 + notchHalfWidth * 0.5,
       notchDepth,
-      size.width / 2 + notchHalfWidth * 0.68,
+      size.width / 2 + notchHalfWidth * 0.74,
       0,
       size.width / 2 + notchHalfWidth,
       0,

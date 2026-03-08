@@ -11,6 +11,8 @@ class HomeFocusTopSection extends StatelessWidget {
     required this.timerLabel,
     required this.currentSession,
     required this.totalSession,
+    required this.phaseLabel,
+    required this.sessionProgresses,
     required this.onNotificationTap,
     required this.onSettingsTap,
     required this.onPlayTap,
@@ -27,6 +29,8 @@ class HomeFocusTopSection extends StatelessWidget {
   final String timerLabel;
   final int currentSession;
   final int totalSession;
+  final String phaseLabel;
+  final List<double> sessionProgresses;
   final VoidCallback onNotificationTap;
   final VoidCallback onSettingsTap;
   final VoidCallback onPlayTap;
@@ -42,6 +46,9 @@ class HomeFocusTopSection extends StatelessWidget {
     const surface = Color(0xFFF8FBFF);
     const card = Color(0xFFE7EDF8);
     final clampedProgress = progress.clamp(0.0, 1.0);
+    final safeSegments = sessionProgresses.isEmpty
+        ? List<double>.filled(totalSession, 0)
+        : sessionProgresses;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,14 +177,30 @@ class HomeFocusTopSection extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
-                          child: Text(
-                            'Pomodoro Session',
-                            style: TextStyle(
-                              color: Color(0xFF1F56BF),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11.5,
-                            ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Pomodoro Session',
+                                style: TextStyle(
+                                  color: Color(0xFF1F56BF),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                phaseLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF7B90AF),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         Text(
@@ -193,7 +216,9 @@ class HomeFocusTopSection extends StatelessWidget {
                     const SizedBox(height: 5),
                     Row(
                       children: List.generate(totalSession, (index) {
-                        final active = index < currentSession;
+                        final value = index < safeSegments.length
+                            ? safeSegments[index].clamp(0.0, 1.0)
+                            : 0.0;
                         return Expanded(
                           child: Container(
                             margin: EdgeInsets.only(
@@ -201,8 +226,20 @@ class HomeFocusTopSection extends StatelessWidget {
                             ),
                             height: 4,
                             decoration: BoxDecoration(
-                              color: active ? accent : const Color(0xFFD4DCE8),
+                              color: const Color(0xFFD4DCE8),
                               borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: value,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         );
