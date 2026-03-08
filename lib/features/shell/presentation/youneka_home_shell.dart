@@ -28,24 +28,13 @@ class YounekaHomeShell extends StatefulWidget {
 
 class _YounekaHomeShellState extends State<YounekaHomeShell> {
   late int _selectedIndex;
+  late List<bool> _loadedTabs;
 
   static const List<_ShellDestination> _destinations = [
-    _ShellDestination(
-      label: 'Beranda',
-      icon: Icons.home_rounded,
-    ),
-    _ShellDestination(
-      label: 'Andrew',
-      icon: Icons.auto_awesome_rounded,
-    ),
-    _ShellDestination(
-      label: 'Coach',
-      icon: Icons.self_improvement_rounded,
-    ),
-    _ShellDestination(
-      label: 'Progres',
-      icon: Icons.bar_chart_rounded,
-    ),
+    _ShellDestination(label: 'Beranda', icon: Icons.home_rounded),
+    _ShellDestination(label: 'Andrew', icon: Icons.auto_awesome_rounded),
+    _ShellDestination(label: 'Coach', icon: Icons.self_improvement_rounded),
+    _ShellDestination(label: 'Profil', icon: Icons.person_rounded),
   ];
 
   @override
@@ -54,6 +43,30 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     _selectedIndex = widget.initialIndex
         .clamp(0, widget.pages.length - 1)
         .toInt();
+    _loadedTabs = List<bool>.filled(widget.pages.length, false);
+    if (_loadedTabs.isNotEmpty) {
+      _loadedTabs[_selectedIndex] = true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant YounekaHomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pages.length != widget.pages.length) {
+      final next = List<bool>.filled(widget.pages.length, false);
+      final limit = oldWidget.pages.length < widget.pages.length
+          ? oldWidget.pages.length
+          : widget.pages.length;
+      for (var i = 0; i < limit; i++) {
+        next[i] = i < _loadedTabs.length ? _loadedTabs[i] : false;
+      }
+      if (widget.pages.isNotEmpty) {
+        final selected = _selectedIndex.clamp(0, widget.pages.length - 1);
+        _selectedIndex = selected.toInt();
+        next[_selectedIndex] = true;
+      }
+      _loadedTabs = next;
+    }
   }
 
   Future<void> _openQuickActions() async {
@@ -82,7 +95,19 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
 
     return Scaffold(
       backgroundColor: _shellSurface,
-      body: IndexedStack(index: _selectedIndex, children: widget.pages),
+      body: Stack(
+        children: List<Widget>.generate(widget.pages.length, (index) {
+          final isLoaded = _loadedTabs[index];
+          final isActive = _selectedIndex == index;
+          if (!isLoaded && !isActive) {
+            return const SizedBox.shrink();
+          }
+          return Offstage(
+            offstage: !isActive,
+            child: TickerMode(enabled: isActive, child: widget.pages[index]),
+          );
+        }),
+      ),
       bottomNavigationBar: SizedBox(
         height: 96 + bottomInset,
         child: Stack(
@@ -90,7 +115,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
           alignment: Alignment.bottomCenter,
           children: [
             Positioned.fill(
-              top: 18,
+              top: 26,
               child: ClipPath(
                 clipper: const _BottomBarClipper(),
                 child: Container(
@@ -102,14 +127,14 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
                         child: _BottomNavItem(
                           destination: _destinations[0],
                           selected: _selectedIndex == 0,
-                          onTap: () => setState(() => _selectedIndex = 0),
+                          onTap: () => _onTabTap(0),
                         ),
                       ),
                       Expanded(
                         child: _BottomNavItem(
                           destination: _destinations[1],
                           selected: _selectedIndex == 1,
-                          onTap: () => setState(() => _selectedIndex = 1),
+                          onTap: () => _onTabTap(1),
                         ),
                       ),
                       const SizedBox(width: 86),
@@ -117,14 +142,14 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
                         child: _BottomNavItem(
                           destination: _destinations[2],
                           selected: _selectedIndex == 2,
-                          onTap: () => setState(() => _selectedIndex = 2),
+                          onTap: () => _onTabTap(2),
                         ),
                       ),
                       Expanded(
                         child: _BottomNavItem(
                           destination: _destinations[3],
                           selected: _selectedIndex == 3,
-                          onTap: () => setState(() => _selectedIndex = 3),
+                          onTap: () => _onTabTap(3),
                         ),
                       ),
                     ],
@@ -133,12 +158,13 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
               ),
             ),
             Positioned(
-              top: -10,
+              top: 2,
               child: GestureDetector(
-                onTap: _openQuickActions,
+                onTap: widget.onMentorTap,
+                onLongPress: _openQuickActions,
                 child: Container(
-                  width: 72,
-                  height: 72,
+                  width: 64,
+                  height: 64,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: const LinearGradient(
@@ -146,12 +172,12 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    border: Border.all(color: Colors.white, width: 5),
+                    border: Border.all(color: Colors.white, width: 4),
                   ),
                   child: const Icon(
-                    Icons.add_rounded,
+                    Icons.support_agent_rounded,
                     color: Colors.white,
-                    size: 36,
+                    size: 28,
                   ),
                 ),
               ),
@@ -160,6 +186,16 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
         ),
       ),
     );
+  }
+
+  void _onTabTap(int index) {
+    if (_selectedIndex == index) return;
+    setState(() {
+      _selectedIndex = index;
+      if (index >= 0 && index < _loadedTabs.length) {
+        _loadedTabs[index] = true;
+      }
+    });
   }
 }
 
@@ -255,7 +291,7 @@ class _QuickActionSheet extends StatelessWidget {
                     width: 48,
                     height: 5,
                     decoration: BoxDecoration(
-                color: _shellGold,
+                      color: _shellGold,
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -464,7 +500,7 @@ class _BottomBarClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
     final notchHalfWidth = size.width * 0.19;
-    const notchDepth = 32.0;
+    const notchDepth = 42.0;
     const corner = 26.0;
 
     path.moveTo(0, corner);

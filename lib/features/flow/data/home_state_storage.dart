@@ -8,9 +8,14 @@ class HomeStateStorage {
   HomeStateStorage._();
 
   static const String _stateKey = 'youneka_home_state_v1';
+  static SharedPreferences? _prefs;
+
+  static Future<SharedPreferences> _instance() async {
+    return _prefs ??= await SharedPreferences.getInstance();
+  }
 
   static Future<HomeStateSnapshot?> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance();
     final raw = prefs.getString(_stateKey);
     if (raw == null || raw.isEmpty) return null;
     try {
@@ -23,7 +28,7 @@ class HomeStateStorage {
   }
 
   static Future<void> save(HomeStateSnapshot snapshot) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance();
     final raw = jsonEncode(snapshot.toMap());
     await prefs.setString(_stateKey, raw);
   }

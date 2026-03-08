@@ -1934,7 +1934,7 @@ class _AppRootState extends State<AppRoot> {
     _AndrewPlanPage(),
     _AndrewHomePage(),
     _AndrewCoachPage(),
-    _AndrewProgressPage(),
+    _AndrewProfilePage(),
   ];
 
   Future<void> _handleSidebarAction(String action) async {
@@ -2385,13 +2385,32 @@ class _PlanSheetResultData {
   final TimeOfDay end;
 }
 
+class _PomodoroUiSnapshot {
+  const _PomodoroUiSnapshot({
+    required this.phase,
+    required this.remainingSeconds,
+    required this.totalSeconds,
+    required this.completedSessions,
+    required this.totalSessions,
+  });
+
+  final PomodoroPhase phase;
+  final int remainingSeconds;
+  final int totalSeconds;
+  final int completedSessions;
+  final int totalSessions;
+}
+
 class _AndrewPlanPageState extends State<_AndrewPlanPage> {
   late DateTime _selectedDate;
   HomeSettings _settings = HomeSettings.defaults;
   PomodoroRuntime _pomodoro = PomodoroRuntime.initial(HomeSettings.defaults);
+  late final ValueNotifier<_PomodoroUiSnapshot> _pomodoroUi;
   List<HomeScheduleItem> _schedules = <HomeScheduleItem>[];
+  List<HomeScheduleItem> _selectedDaySchedules = <HomeScheduleItem>[];
   List<HomeNotificationItem> _notifications = <HomeNotificationItem>[];
   Timer? _pomodoroTimer;
+  Timer? _persistDebounceTimer;
   int _currentLevel = 12;
   int _currentXp = 1500;
   int _targetXp = 2000;
@@ -2403,6 +2422,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
   void initState() {
     super.initState();
     _selectedDate = DateUtils.dateOnly(DateTime.now());
+    _pomodoroUi = ValueNotifier<_PomodoroUiSnapshot>(_buildPomodoroUi());
     PlanTemplateBridge.selectionNotifier.addListener(_onTemplateSelected);
     _loadHomeState();
   }
@@ -2410,8 +2430,34 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
   @override
   void dispose() {
     _pomodoroTimer?.cancel();
+    _persistDebounceTimer?.cancel();
+    unawaited(_persistHomeStateNow());
+    _pomodoroUi.dispose();
     PlanTemplateBridge.selectionNotifier.removeListener(_onTemplateSelected);
     super.dispose();
+  }
+
+  _PomodoroUiSnapshot _buildPomodoroUi() {
+    return _PomodoroUiSnapshot(
+      phase: _pomodoro.phase,
+      remainingSeconds: _pomodoro.remainingSeconds,
+      totalSeconds: _pomodoro.totalSeconds,
+      completedSessions: _pomodoro.completedSessions,
+      totalSessions: _pomodoro.totalSessions,
+    );
+  }
+
+  void _syncPomodoroUi() {
+    _pomodoroUi.value = _buildPomodoroUi();
+  }
+
+  void _refreshSelectedDaySchedules() {
+    final selected = DateUtils.dateOnly(_selectedDate);
+    _selectedDaySchedules =
+        _schedules
+            .where((item) => DateUtils.isSameDay(item.startAt, selected))
+            .toList()
+          ..sort((a, b) => a.startAt.compareTo(b.startAt));
   }
 
   Future<void> _loadHomeState() async {
@@ -2421,13 +2467,14 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     if (snapshot == null) {
       setState(() {
         _schedules = _buildDefaultSchedules(_selectedDate);
+        _refreshSelectedDaySchedules();
         _appendNotification(
           title: 'Selamat datang di Focus Mode',
           body: 'Tap tombol play untuk mulai pomodoro pertama kamu.',
         );
         _isLoading = false;
       });
-      unawaited(_persistHomeState());
+      _queuePersist();
       return;
     }
 
@@ -2440,6 +2487,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
       _settings = snapshot.settings;
       _pomodoro = reconciledPomodoro;
       _schedules = [...snapshot.schedules];
+      _refreshSelectedDaySchedules();
       _notifications = [...snapshot.notifications]
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       _currentLevel = snapshot.currentLevel;
@@ -2447,11 +2495,13 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
       _targetXp = snapshot.targetXp;
       _isLoading = false;
     });
+    _syncPomodoroUi();
     if (_schedules.isEmpty) {
       setState(() {
         _schedules = _buildDefaultSchedules(_selectedDate);
+        _refreshSelectedDaySchedules();
       });
-      unawaited(_persistHomeState());
+      _queuePersist();
     }
     if (_pomodoro.phase == PomodoroPhase.running) {
       _startPomodoroTicker();
@@ -2521,12 +2571,13 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     setState(() {
       _selectedDate = DateUtils.dateOnly(result.date);
       _schedules = [..._schedules, item];
+      _refreshSelectedDaySchedules();
       _appendNotification(
         title: 'Template ditambahkan',
         body: payload.preset.title,
       );
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   Future<_PlanSheetResultData?> _openAddPlanSheet({
@@ -2552,56 +2603,12 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     return result;
   }
 
-  List<HomeScheduleItem> get _schedulesForSelectedDay {
-    final selected = DateUtils.dateOnly(_selectedDate);
-    final list =
-        _schedules
-            .where((item) => DateUtils.isSameDay(item.startAt, selected))
-            .toList()
-          ..sort((a, b) => a.startAt.compareTo(b.startAt));
-    return list;
-  }
-
   double get _xpProgress {
     if (_targetXp <= 0) return 0;
     return (_currentXp / _targetXp).clamp(0.0, 1.0);
   }
 
-  int get _displaySession {
-    final next =
-        _pomodoro.completedSessions +
-        (_pomodoro.phase == PomodoroPhase.completed ? 0 : 1);
-    return next.clamp(1, _pomodoro.totalSessions).toInt();
-  }
-
-  String get _timerLabel {
-    final total = _pomodoro.remainingSeconds.clamp(0, 359999).toInt();
-    final minutes = (total ~/ 60).toString().padLeft(2, '0');
-    final seconds = (total % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
-  IconData get _pomodoroActionIcon {
-    if (_pomodoro.phase == PomodoroPhase.running) {
-      return Icons.pause_rounded;
-    }
-    return Icons.play_arrow_rounded;
-  }
-
-  String get _pomodoroActionTooltip {
-    switch (_pomodoro.phase) {
-      case PomodoroPhase.running:
-        return 'Pause Pomodoro';
-      case PomodoroPhase.paused:
-        return 'Resume Pomodoro';
-      case PomodoroPhase.completed:
-        return 'Mulai ronde baru';
-      case PomodoroPhase.idle:
-        return 'Mulai Pomodoro';
-    }
-  }
-
-  Future<void> _persistHomeState() async {
+  Future<void> _persistHomeStateNow() async {
     await HomeStateStorage.save(
       HomeStateSnapshot(
         selectedDate: _selectedDate,
@@ -2614,6 +2621,13 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         targetXp: _targetXp,
       ),
     );
+  }
+
+  void _queuePersist({Duration delay = const Duration(milliseconds: 600)}) {
+    _persistDebounceTimer?.cancel();
+    _persistDebounceTimer = Timer(delay, () {
+      unawaited(_persistHomeStateNow());
+    });
   }
 
   void _appendNotification({required String title, required String body}) {
@@ -2733,7 +2747,7 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     setState(() {
       _notifications = result;
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   Future<void> _openSettings() async {
@@ -2773,8 +2787,9 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         body:
             'Pomodoro ${result.pomodoroMinutes} menit, target ${result.sessionsPerRound} sesi.',
       );
+      _syncPomodoroUi();
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _applyXpGain(int amount) {
@@ -2824,9 +2839,10 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         totalSessions: _settings.sessionsPerRound,
         lastUpdatedMs: now,
       );
+      _syncPomodoroUi();
     });
     _startPomodoroTicker();
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _pausePomodoro() {
@@ -2836,8 +2852,9 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         phase: PomodoroPhase.paused,
         lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
       );
+      _syncPomodoroUi();
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _resumePomodoro() {
@@ -2846,9 +2863,10 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         phase: PomodoroPhase.running,
         lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
       );
+      _syncPomodoroUi();
     });
     _startPomodoroTicker();
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _resetPomodoro() {
@@ -2867,8 +2885,9 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         title: 'Pomodoro di-reset',
         body: 'Sesi kembali ke awal.',
       );
+      _syncPomodoroUi();
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _startPomodoroTicker() {
@@ -2908,39 +2927,43 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
                 ? 'Semua target sesi tercapai hari ini.'
                 : 'Lanjut ke sesi ${completed + 1} saat siap.',
           );
+          _syncPomodoroUi();
         });
         if (_pomodoro.phase == PomodoroPhase.running) {
           _startPomodoroTicker();
         }
-        unawaited(_persistHomeState());
+        _queuePersist();
         return;
       }
 
-      setState(() {
-        _pomodoro = _pomodoro.copyWith(
-          remainingSeconds: _pomodoro.remainingSeconds - 1,
-          lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
-        );
-      });
+      _pomodoro = _pomodoro.copyWith(
+        remainingSeconds: _pomodoro.remainingSeconds - 1,
+        lastUpdatedMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      _syncPomodoroUi();
       if (_pomodoro.remainingSeconds % 5 == 0) {
-        unawaited(_persistHomeState());
+        _queuePersist();
       }
     });
   }
 
-  Future<void> _addSchedule() async {
+  Future<void> _addSchedule([DateTime? initialDateTime]) async {
+    final baseDateTime =
+        initialDateTime ??
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 9);
     final result = await _openAddPlanSheet(
-      initialDate: _selectedDate,
-      initialStart: const TimeOfDay(hour: 9, minute: 0),
+      initialDate: baseDateTime,
+      initialStart: TimeOfDay.fromDateTime(baseDateTime),
     );
     if (result == null || !mounted) return;
     setState(() {
       _selectedDate = DateUtils.dateOnly(result.date);
       final item = _createScheduleFromSheet(result);
       _schedules = [..._schedules, item];
+      _refreshSelectedDaySchedules();
       _appendNotification(title: 'Schedule ditambahkan', body: item.title);
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   Future<void> _editSchedule(HomeScheduleItem item) async {
@@ -2964,9 +2987,10 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
       _schedules = _schedules
           .map((current) => current.id == item.id ? updated : current)
           .toList();
+      _refreshSelectedDaySchedules();
       _appendNotification(title: 'Schedule diperbarui', body: updated.title);
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   Future<void> _deleteSchedule(HomeScheduleItem item) async {
@@ -2992,9 +3016,10 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
       _schedules = _schedules
           .where((current) => current.id != item.id)
           .toList();
+      _refreshSelectedDaySchedules();
       _appendNotification(title: 'Schedule dihapus', body: item.title);
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   void _toggleScheduleComplete(HomeScheduleItem item) {
@@ -3013,8 +3038,9 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
         }
         return updated;
       }).toList();
+      _refreshSelectedDaySchedules();
     });
-    unawaited(_persistHomeState());
+    _queuePersist();
   }
 
   Future<void> _openScheduleDetail(HomeScheduleItem item) async {
@@ -3100,63 +3126,14 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
     );
   }
 
-  void _goToPreviousDay() {
+  void _selectDate(DateTime date) {
+    final picked = DateUtils.dateOnly(date);
+    if (DateUtils.isSameDay(_selectedDate, picked)) return;
     setState(() {
-      _selectedDate = DateUtils.dateOnly(
-        _selectedDate.subtract(const Duration(days: 1)),
-      );
+      _selectedDate = picked;
+      _refreshSelectedDaySchedules();
     });
-    unawaited(_persistHomeState());
-  }
-
-  void _goToNextDay() {
-    setState(() {
-      _selectedDate = DateUtils.dateOnly(
-        _selectedDate.add(const Duration(days: 1)),
-      );
-    });
-    unawaited(_persistHomeState());
-  }
-
-  Future<void> _pickDay() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _selectedDate = DateUtils.dateOnly(picked);
-    });
-    unawaited(_persistHomeState());
-  }
-
-  String _formatDateLabel(DateTime date) {
-    const weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${weekdays[(date.weekday - 1) % 7]}, ${months[date.month - 1]} ${date.day}';
+    _queuePersist();
   }
 
   String _formatHour(DateTime date) {
@@ -3182,21 +3159,51 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              HomeFocusTopSection(
-                title: 'Focus Mode',
-                subtitle: 'Level $_currentLevel Explorer',
-                currentXp: _currentXp,
-                targetXp: _targetXp,
-                progress: _xpProgress,
-                timerLabel: _timerLabel,
-                currentSession: _displaySession,
-                totalSession: _pomodoro.totalSessions,
-                onNotificationTap: () => unawaited(_openNotifications()),
-                onSettingsTap: () => unawaited(_openSettings()),
-                onPlayTap: _togglePomodoro,
-                onPlayLongPress: _resetPomodoro,
-                playIcon: _pomodoroActionIcon,
-                playTooltip: '$_pomodoroActionTooltip (tekan lama untuk reset)',
+              ValueListenableBuilder<_PomodoroUiSnapshot>(
+                valueListenable: _pomodoroUi,
+                builder: (context, pomodoroUi, _) {
+                  final safeTotalSessions = pomodoroUi.totalSessions <= 0
+                      ? 1
+                      : pomodoroUi.totalSessions;
+                  final displaySession =
+                      pomodoroUi.completedSessions +
+                      (pomodoroUi.phase == PomodoroPhase.completed ? 0 : 1);
+                  final sessionLabel = displaySession
+                      .clamp(1, safeTotalSessions)
+                      .toInt();
+                  final total = pomodoroUi.remainingSeconds
+                      .clamp(0, 359999)
+                      .toInt();
+                  final minutes = (total ~/ 60).toString().padLeft(2, '0');
+                  final seconds = (total % 60).toString().padLeft(2, '0');
+                  final timerLabel = '$minutes:$seconds';
+                  final actionIcon = pomodoroUi.phase == PomodoroPhase.running
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded;
+                  final actionTooltip = switch (pomodoroUi.phase) {
+                    PomodoroPhase.running => 'Pause Pomodoro',
+                    PomodoroPhase.paused => 'Resume Pomodoro',
+                    PomodoroPhase.completed => 'Mulai ronde baru',
+                    PomodoroPhase.idle => 'Mulai Pomodoro',
+                  };
+
+                  return HomeFocusTopSection(
+                    title: 'Focus Mode',
+                    subtitle: 'Level $_currentLevel Explorer',
+                    currentXp: _currentXp,
+                    targetXp: _targetXp,
+                    progress: _xpProgress,
+                    timerLabel: timerLabel,
+                    currentSession: sessionLabel,
+                    totalSession: safeTotalSessions,
+                    onNotificationTap: () => unawaited(_openNotifications()),
+                    onSettingsTap: () => unawaited(_openSettings()),
+                    onPlayTap: _togglePomodoro,
+                    onPlayLongPress: _resetPomodoro,
+                    playIcon: actionIcon,
+                    playTooltip: '$actionTooltip (tekan lama untuk reset)',
+                  );
+                },
               ),
               const SizedBox(height: 20),
               Container(height: 1, color: const Color(0xFFE4E9F1)),
@@ -3204,12 +3211,11 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage> {
               Expanded(
                 child: SingleChildScrollView(
                   child: HomeScheduleTimelineSection(
-                    dateLabel: _formatDateLabel(_selectedDate),
-                    schedules: _schedulesForSelectedDay,
-                    onPreviousDay: _goToPreviousDay,
-                    onNextDay: _goToNextDay,
-                    onPickDay: () => unawaited(_pickDay()),
-                    onAddSchedule: () => unawaited(_addSchedule()),
+                    selectedDate: _selectedDate,
+                    schedules: _selectedDaySchedules,
+                    onSelectDate: _selectDate,
+                    onCreateScheduleAt: (dateTime) =>
+                        unawaited(_addSchedule(dateTime)),
                     onScheduleTap: (item) =>
                         unawaited(_openScheduleDetail(item)),
                     onToggleCompleted: _toggleScheduleComplete,
@@ -3763,8 +3769,8 @@ class _CoachPrompt extends StatelessWidget {
   }
 }
 
-class _AndrewProgressPage extends StatelessWidget {
-  const _AndrewProgressPage();
+class _AndrewProfilePage extends StatelessWidget {
+  const _AndrewProfilePage();
 
   @override
   Widget build(BuildContext context) {
@@ -3778,70 +3784,73 @@ class _AndrewProgressPage extends StatelessWidget {
       ),
       child: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
               _AndrewSectionHeader(
-                title: 'Progress',
-                subtitle: 'Pantau konsistensi kecilmu setiap hari.',
+                title: 'Profil',
+                subtitle: 'Kelola identitas, progres, dan preferensi akunmu.',
               ),
+              SizedBox(height: 18),
+              _ProfileHeroCard(),
               SizedBox(height: 16),
+              _ProfileSectionTitle('Ringkasan'),
+              SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
-                    child: _AndrewStatCard(
-                      icon: Icons.local_fire_department_rounded,
-                      title: 'Streak',
-                      value: '6 hari',
-                      detail: 'Naik dari minggu lalu',
-                      color: _matchaOlive,
+                    child: _ProfileMetricCard(
+                      icon: Icons.workspace_premium_rounded,
+                      title: 'Level',
+                      value: '12',
+                      detail: 'Explorer',
+                      color: _andrewTeal,
                     ),
                   ),
                   SizedBox(width: 12),
                   Expanded(
-                    child: _AndrewStatCard(
-                      icon: Icons.timer_rounded,
-                      title: 'Fokus',
-                      value: '4j 20m',
-                      detail: 'Total minggu ini',
-                      color: _andrewTeal,
+                    child: _ProfileMetricCard(
+                      icon: Icons.local_fire_department_rounded,
+                      title: 'Streak',
+                      value: '6 hari',
+                      detail: 'Masih aktif',
+                      color: _matchaOlive,
                     ),
                   ),
                 ],
               ),
               SizedBox(height: 16),
-              _AndrewStatCard(
-                icon: Icons.check_circle_rounded,
-                title: 'Tugas selesai',
-                value: '14 dari 18',
-                detail: '78% tercapai',
-                color: _matchaGold,
+              _ProfileSectionTitle('Akun'),
+              SizedBox(height: 10),
+              _ProfileActionTile(
+                icon: Icons.person_outline_rounded,
+                title: 'Edit profil',
+                subtitle: 'Ubah nama, foto, dan bio singkat.',
+              ),
+              _ProfileActionTile(
+                icon: Icons.notifications_none_rounded,
+                title: 'Preferensi notifikasi',
+                subtitle: 'Atur pengingat fokus dan jadwal.',
+              ),
+              _ProfileActionTile(
+                icon: Icons.lock_outline_rounded,
+                title: 'Privasi dan keamanan',
+                subtitle: 'Kelola keamanan akun dan data.',
               ),
               SizedBox(height: 16),
-              Text(
-                'Sorotan minggu ini',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _andrewInk,
-                ),
+              _ProfileSectionTitle('Aktivitas'),
+              SizedBox(height: 10),
+              _ProfileInfoCard(
+                title: 'Target minggu ini',
+                body: 'Selesaikan 8 sesi fokus dan review 5 schedule penting.',
+                accent: _matchaGold,
               ),
               SizedBox(height: 10),
-              _AndrewStreakTile(
-                icon: Icons.emoji_events_rounded,
-                title: 'Konsisten pagi hari',
-                detail: 'Sesi fokus paling sering jam 08.00.',
-              ),
-              _AndrewStreakTile(
-                icon: Icons.bolt_rounded,
-                title: 'Mulai cepat',
-                detail: 'Rata-rata mulai 7 menit setelah membuka app.',
-              ),
-              _AndrewStreakTile(
-                icon: Icons.self_improvement_rounded,
-                title: 'Refleksi malam',
-                detail: '4 hari berturut-turut menulis catatan.',
+              _ProfileInfoCard(
+                title: 'Mentor favorit',
+                body: 'Andrew paling sering membantu memulai sesi pagi.',
+                accent: _andrewTeal,
               ),
             ],
           ),
@@ -3851,8 +3860,136 @@ class _AndrewProgressPage extends StatelessWidget {
   }
 }
 
-class _AndrewStatCard extends StatelessWidget {
-  const _AndrewStatCard({
+class _ProfileHeroCard extends StatelessWidget {
+  const _ProfileHeroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _appWhite,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _matchaGold),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x10111827),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              color: _matchaMist,
+              shape: BoxShape.circle,
+              border: Border.all(color: _matchaGold),
+            ),
+            child: const Icon(
+              Icons.person_rounded,
+              size: 36,
+              color: _andrewTeal,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Lingga',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: _andrewInk,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Level 12 Explorer',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: const [
+                    _ProfileBadge(
+                      icon: Icons.timer_outlined,
+                      label: '4j 20m fokus',
+                    ),
+                    _ProfileBadge(
+                      icon: Icons.check_circle_outline_rounded,
+                      label: '14 tugas selesai',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileBadge extends StatelessWidget {
+  const _ProfileBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _matchaMist,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _andrewTeal),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: _andrewInk,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileSectionTitle extends StatelessWidget {
+  const _ProfileSectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+        color: _andrewInk,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _ProfileMetricCard extends StatelessWidget {
+  const _ProfileMetricCard({
     required this.icon,
     required this.title,
     required this.value,
@@ -3869,13 +4006,13 @@ class _AndrewStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _appWhite,
         borderRadius: BorderRadius.circular(22),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14111827),
+            color: Color(0x12111827),
             blurRadius: 16,
             offset: Offset(0, 10),
           ),
@@ -3885,15 +4022,15 @@ class _AndrewStatCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(12),
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: color),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(
             title,
             style: Theme.of(
@@ -3904,11 +4041,11 @@ class _AndrewStatCard extends StatelessWidget {
           Text(
             value,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: _andrewInk,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             detail,
             style: Theme.of(
@@ -3921,16 +4058,16 @@ class _AndrewStatCard extends StatelessWidget {
   }
 }
 
-class _AndrewStreakTile extends StatelessWidget {
-  const _AndrewStreakTile({
+class _ProfileActionTile extends StatelessWidget {
+  const _ProfileActionTile({
     required this.icon,
     required this.title,
-    required this.detail,
+    required this.subtitle,
   });
 
   final IconData icon;
   final String title;
-  final String detail;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -3961,19 +4098,65 @@ class _AndrewStreakTile extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: _andrewInk,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  detail,
+                  subtitle,
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: _matchaMuted),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 10),
+          const Icon(Icons.chevron_right_rounded, color: _matchaMuted),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileInfoCard extends StatelessWidget {
+  const _ProfileInfoCard({
+    required this.title,
+    required this.body,
+    required this.accent,
+  });
+
+  final String title;
+  final String body;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _appWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: _andrewInk,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: _matchaMuted, height: 1.35),
           ),
         ],
       ),
@@ -4124,12 +4307,13 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
   final GlobalKey _canvasKey = GlobalKey();
   final TransformationController _transformController =
       TransformationController();
+  final ValueNotifier<double> _viewportScale = ValueNotifier<double>(1.0);
   final Size _canvasSize = const Size(2400, 1600);
 
   final List<FlowNode> _nodes = [];
   final List<FlowConnection> _connections = [];
 
-  double _currentScale = 1.0;
+  int _lastScaleSyncUs = 0;
   String? _selectedNodeId;
   String? _connectionFromNodeId;
   bool _showGrid = true;
@@ -4159,6 +4343,8 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
   @override
   void dispose() {
     _removeSpawnMenu();
+    _transformController.dispose();
+    _viewportScale.dispose();
     _inlineEditController.dispose();
     _inlineEditFocusNode.dispose();
     super.dispose();
@@ -4190,6 +4376,9 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
     _connectionCounter = _nextIndex('conn_', _connections.map((n) => n.id));
     _selectedNodeId = _nodes.isNotEmpty ? _nodes.first.id : null;
     _connectionFromNodeId = null;
+    _transformController.value = Matrix4.identity();
+    _viewportScale.value = 1.0;
+    _lastScaleSyncUs = 0;
   }
 
   int _nextIndex(String prefix, Iterable<String> ids) {
@@ -4376,10 +4565,28 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
   }
 
   void _resetViewport() {
-    setState(() {
-      _transformController.value = Matrix4.identity();
-      _currentScale = 1.0;
-    });
+    _transformController.value = Matrix4.identity();
+    _viewportScale.value = 1.0;
+    _lastScaleSyncUs = 0;
+  }
+
+  void _syncViewportScale({bool force = false}) {
+    final next = _transformController.value.getMaxScaleOnAxis();
+    final current = _viewportScale.value;
+    if ((next - current).abs() < 0.0001) {
+      return;
+    }
+    if (!force) {
+      final nowUs = DateTime.now().microsecondsSinceEpoch;
+      if ((next - current).abs() < 0.01) {
+        return;
+      }
+      if (nowUs - _lastScaleSyncUs < 33000) {
+        return;
+      }
+      _lastScaleSyncUs = nowUs;
+    }
+    _viewportScale.value = next;
   }
 
   void _clearSelection() {
@@ -4639,16 +4846,8 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
           maxScale: 2.8,
           panEnabled: !_isNodeInteraction,
           scaleEnabled: _resizingNodeId == null,
-          onInteractionUpdate: (_) {
-            setState(() {
-              _currentScale = _transformController.value.getMaxScaleOnAxis();
-            });
-          },
-          onInteractionEnd: (_) {
-            setState(() {
-              _currentScale = _transformController.value.getMaxScaleOnAxis();
-            });
-          },
+          onInteractionUpdate: (_) => _syncViewportScale(),
+          onInteractionEnd: (_) => _syncViewportScale(force: true),
           child: SizedBox(
             key: _canvasKey,
             width: _canvasSize.width,
@@ -4658,16 +4857,25 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
               children: [
                 if (_showGrid)
                   Positioned.fill(
-                    child: CustomPaint(
-                      painter: FlowGridPainter(scale: _currentScale),
+                    child: RepaintBoundary(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _viewportScale,
+                        builder: (context, scale, _) {
+                          return CustomPaint(
+                            painter: FlowGridPainter(scale: scale),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 Positioned.fill(
-                  child: CustomPaint(
-                    painter: ConnectionPainter(
-                      nodes: _nodes,
-                      connections: _connections,
-                      highlightFrom: _connectionFromNodeId,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: ConnectionPainter(
+                        nodes: _nodes,
+                        connections: _connections,
+                        highlightFrom: _connectionFromNodeId,
+                      ),
                     ),
                   ),
                 ),
@@ -4732,6 +4940,10 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
     final node = _nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (scene == null || previous == null || node == null) return;
     final delta = scene - previous;
+    if (delta.distanceSquared < 0.0004) {
+      _lastScenePosition = scene;
+      return;
+    }
     setState(() {
       final next = node.position + delta;
       final clampedX = next.dx.clamp(0.0, _canvasSize.width - node.size.width);
@@ -4786,6 +4998,10 @@ class _FlowEditorScreenState extends State<FlowEditorScreen> {
     }
 
     final delta = scene - previous;
+    if (delta.distanceSquared < 0.0004) {
+      _lastScenePosition = scene;
+      return;
+    }
     double left = node.position.dx;
     double top = node.position.dy;
     double right = left + node.size.width;
