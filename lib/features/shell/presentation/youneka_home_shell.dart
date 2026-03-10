@@ -31,6 +31,7 @@ class YounekaHomeShell extends StatefulWidget {
 class _YounekaHomeShellState extends State<YounekaHomeShell> {
   late int _selectedIndex;
   late List<bool> _loadedTabs;
+  late final PageController _pageController;
 
   static const List<_ShellDestination> _destinations = [
     _ShellDestination(label: 'Beranda', icon: Icons.home_rounded),
@@ -38,7 +39,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
       label: 'Template',
       icon: Icons.dashboard_customize_rounded,
     ),
-    _ShellDestination(label: 'Coach', icon: Icons.self_improvement_rounded),
+    _ShellDestination(label: 'Prestasi', icon: Icons.workspace_premium_rounded),
     _ShellDestination(label: 'Profil', icon: Icons.person_rounded),
   ];
 
@@ -48,6 +49,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     _selectedIndex = widget.initialIndex
         .clamp(0, widget.pages.length - 1)
         .toInt();
+    _pageController = PageController(initialPage: _selectedIndex);
     _loadedTabs = List<bool>.filled(widget.pages.length, false);
     if (_loadedTabs.isNotEmpty) {
       _loadedTabs[_selectedIndex] = true;
@@ -74,6 +76,10 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
         final selected = _selectedIndex.clamp(0, widget.pages.length - 1);
         _selectedIndex = selected.toInt();
         next[_selectedIndex] = true;
+        if (_pageController.hasClients &&
+            _pageController.page?.round() != _selectedIndex) {
+          _pageController.jumpToPage(_selectedIndex);
+        }
       }
       _loadedTabs = next;
     }
@@ -82,6 +88,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
   @override
   void dispose() {
     widget.tabRequestNotifier?.removeListener(_handleExternalTabRequest);
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -109,45 +116,87 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     final target = widget.tabRequestNotifier?.value;
     if (target == null || target < 0 || target >= widget.pages.length) return;
     if (!mounted) return;
-    setState(() {
-      _selectedIndex = target;
-      _loadedTabs[target] = true;
-    });
+    _selectTab(target, animate: true);
     widget.tabRequestNotifier?.value = null;
+  }
+
+  void _handlePageChanged(int index) {
+    if (!mounted || _selectedIndex == index) return;
+    setState(() {
+      _selectedIndex = index;
+      if (index >= 0 && index < _loadedTabs.length) {
+        _loadedTabs[index] = true;
+      }
+    });
+  }
+
+  void _selectTab(int index, {required bool animate}) {
+    if (index < 0 || index >= widget.pages.length) return;
+    final changed = _selectedIndex != index;
+    if (changed) {
+      setState(() {
+        _selectedIndex = index;
+        if (index >= 0 && index < _loadedTabs.length) {
+          _loadedTabs[index] = true;
+        }
+      });
+    } else if (index >= 0 &&
+        index < _loadedTabs.length &&
+        !_loadedTabs[index]) {
+      setState(() {
+        _loadedTabs[index] = true;
+      });
+    }
+    if (!_pageController.hasClients) return;
+    final currentPage = _pageController.page?.round() ?? _selectedIndex;
+    if (currentPage == index) return;
+    if (animate) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    _pageController.jumpToPage(index);
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    const navBarHeight = 82.0;
+    const mentorButtonSize = 64.0;
+    const mentorOverlap = 18.0;
 
     return Scaffold(
       backgroundColor: _shellSurface,
-      body: Stack(
-        children: List<Widget>.generate(widget.pages.length, (index) {
+      extendBody: true,
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _handlePageChanged,
+        physics: const BouncingScrollPhysics(),
+        itemCount: widget.pages.length,
+        itemBuilder: (context, index) {
           final isLoaded = _loadedTabs[index];
           final isActive = _selectedIndex == index;
           if (!isLoaded && !isActive) {
             return const SizedBox.shrink();
           }
-          return Offstage(
-            offstage: !isActive,
-            child: TickerMode(enabled: isActive, child: widget.pages[index]),
-          );
-        }),
+          return TickerMode(enabled: isActive, child: widget.pages[index]);
+        },
       ),
       bottomNavigationBar: SizedBox(
-        height: 116 + bottomInset,
+        height: navBarHeight + bottomInset,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
             Positioned.fill(
-              top: 40,
               child: ClipPath(
                 clipper: const _BottomBarClipper(),
                 child: Container(
                   color: Colors.white,
-                  padding: EdgeInsets.fromLTRB(20, 14, 20, 8 + bottomInset),
+                  padding: EdgeInsets.fromLTRB(20, 10, 20, 8 + bottomInset),
                   child: Row(
                     children: [
                       Expanded(
@@ -185,13 +234,13 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
               ),
             ),
             Positioned(
-              top: 18,
+              top: -mentorOverlap,
               child: GestureDetector(
                 onTap: widget.onMentorTap,
                 onLongPress: _openQuickActions,
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: mentorButtonSize,
+                  height: mentorButtonSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: const LinearGradient(
@@ -216,13 +265,7 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
   }
 
   void _onTabTap(int index) {
-    if (_selectedIndex == index) return;
-    setState(() {
-      _selectedIndex = index;
-      if (index >= 0 && index < _loadedTabs.length) {
-        _loadedTabs[index] = true;
-      }
-    });
+    _selectTab(index, animate: true);
   }
 }
 
@@ -527,7 +570,7 @@ class _BottomBarClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
     final notchHalfWidth = size.width * 0.195;
-    const notchDepth = 50.0;
+    const notchDepth = 34.0;
     const corner = 26.0;
 
     path.moveTo(0, corner);

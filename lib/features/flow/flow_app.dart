@@ -2047,10 +2047,13 @@ class _AppRootState extends State<AppRoot> {
     );
   }
 
-  Future<void> _handleTemplateUse(PlanTemplatePreset preset) async {
+  Future<void> _handleTemplateUse(
+    PlanTemplatePreset preset, {
+    bool replaceCurrentDay = false,
+  }) async {
     _tabRequestNotifier.value = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      PlanTemplateBridge.push(preset);
+      PlanTemplateBridge.push(preset, replaceCurrentDay: replaceCurrentDay);
     });
   }
 
@@ -2059,7 +2062,7 @@ class _AppRootState extends State<AppRoot> {
     final pages = <Widget>[
       const _AndrewPlanPage(),
       TemplateLibraryPage(onUseTemplate: _handleTemplateUse),
-      const _AndrewCoachPage(),
+      const _AndrewAchievementPage(),
       const _AndrewProfilePage(),
     ];
 
@@ -2677,21 +2680,22 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage>
     final payload = PlanTemplateBridge.selectionNotifier.value;
     if (payload == null || payload.token == _lastTemplateToken) return;
     _lastTemplateToken = payload.token;
-    final result = await _openAddPlanSheet(
-      initialDate: _selectedDate,
-      initialStart: TimeOfDay.now(),
-      initialTitle: payload.preset.title,
-      initialDurationMinutes: payload.preset.durationMinutes,
-    );
-    if (result == null || !mounted) return;
-    final item = _createScheduleFromSheet(
-      result,
-      priority: SchedulePriority.medium,
-      description: payload.preset.note,
-    );
+    final targetDate = DateUtils.dateOnly(_selectedDate);
+    final generated = _buildSchedulesFromTemplate(payload.preset, targetDate);
+    if (generated.isEmpty || !mounted) return;
     setState(() {
-      _selectedDate = DateUtils.dateOnly(result.date);
-      _schedules = [..._schedules, item];
+      _selectedDate = targetDate;
+      if (payload.replaceCurrentDay) {
+        _schedules = [
+          ..._schedules.where(
+            (item) => !DateUtils.isSameDay(item.startAt, targetDate),
+          ),
+          ...generated,
+        ];
+      } else {
+        _schedules = [..._schedules, ...generated];
+      }
+      _schedules.sort((a, b) => a.startAt.compareTo(b.startAt));
       _refreshSelectedDaySchedules();
       _appendNotification(
         title: 'Template ditambahkan',
@@ -2699,6 +2703,53 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage>
       );
     });
     _queuePersist();
+  }
+
+  List<HomeScheduleItem> _buildSchedulesFromTemplate(
+    PlanTemplatePreset preset,
+    DateTime date,
+  ) {
+    return preset.blocks.map((block) {
+      final startAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        block.startMinute ~/ 60,
+        block.startMinute % 60,
+      );
+      final endAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        block.endMinute ~/ 60,
+        block.endMinute % 60,
+      );
+      return HomeScheduleItem(
+        id: 'sch_${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}',
+        title: block.title,
+        description: block.note.isEmpty ? preset.note : block.note,
+        startAt: startAt,
+        endAt: endAt.isAfter(startAt)
+            ? endAt
+            : startAt.add(const Duration(minutes: 30)),
+        priority: _priorityFromTemplateBlock(block),
+        isCompleted: false,
+        rewardedXp: false,
+      );
+    }).toList()..sort((a, b) => a.startAt.compareTo(b.startAt));
+  }
+
+  SchedulePriority _priorityFromTemplateBlock(PlanTemplateBlock block) {
+    switch (block.kind) {
+      case PlanTemplateBlockKind.breakTime:
+      case PlanTemplateBlockKind.meal:
+        return SchedulePriority.low;
+      case PlanTemplateBlockKind.task:
+      case PlanTemplateBlockKind.study:
+      case PlanTemplateBlockKind.meeting:
+      case PlanTemplateBlockKind.fitness:
+        return SchedulePriority.medium;
+    }
   }
 
   Future<_PlanSheetResultData?> _openAddPlanSheet({
@@ -2909,6 +2960,21 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage>
             'Pomodoro ${result.pomodoroMinutes} menit, target ${result.sessionsPerRound} sesi.',
       );
       _syncPomodoroUi();
+    });
+    _queuePersist();
+  }
+
+  void _toggleAutoStartFromMenu() {
+    setState(() {
+      _settings = _settings.copyWith(
+        autoStartNextSession: !_settings.autoStartNextSession,
+      );
+      _appendNotification(
+        title: 'Auto-start diperbarui',
+        body: _settings.autoStartNextSession
+            ? 'Sesi berikutnya akan berjalan otomatis.'
+            : 'Sesi berikutnya akan dimulai manual.',
+      );
     });
     _queuePersist();
   }
@@ -3399,6 +3465,11 @@ class _AndrewPlanPageState extends State<_AndrewPlanPage>
                     sessionProgresses: sessionProgresses,
                     onNotificationTap: () => unawaited(_openNotifications()),
                     onSettingsTap: () => unawaited(_openSettings()),
+                    onToggleAutoStartTap: _toggleAutoStartFromMenu,
+                    onResetPomodoroTap: _resetPomodoro,
+                    settingsSummary:
+                        '${_settings.pomodoroMinutes} menit • ${_settings.sessionsPerRound} sesi',
+                    autoStartEnabled: _settings.autoStartNextSession,
                     onPlayTap: _togglePomodoro,
                     onPlayLongPress: _resetPomodoro,
                     playIcon: actionIcon,
@@ -3795,178 +3866,1320 @@ TimeOfDay _addMinutes(TimeOfDay time, int minutes) {
   return TimeOfDay(hour: wrapped ~/ 60, minute: wrapped % 60);
 }
 
-class _AndrewCoachPage extends StatelessWidget {
-  const _AndrewCoachPage();
+class _AchievementSnapshot {
+  const _AchievementSnapshot({
+    required this.currentLevel,
+    required this.currentXp,
+    required this.targetXp,
+    required this.totalSchedules,
+    required this.completedSchedules,
+    required this.totalToday,
+    required this.completedToday,
+    required this.activeDaysThisWeek,
+    required this.currentStreak,
+    required this.completedMinutes,
+    required this.milestones,
+  });
+
+  final int currentLevel;
+  final int currentXp;
+  final int targetXp;
+  final int totalSchedules;
+  final int completedSchedules;
+  final int totalToday;
+  final int completedToday;
+  final int activeDaysThisWeek;
+  final int currentStreak;
+  final int completedMinutes;
+  final List<_AchievementMilestone> milestones;
+
+  _AchievementMilestone? get nextMilestone {
+    for (final milestone in milestones) {
+      if (!milestone.unlocked) return milestone;
+    }
+    return null;
+  }
+
+  factory _AchievementSnapshot.fromHomeState(HomeStateSnapshot? state) {
+    if (state == null) {
+      return const _AchievementSnapshot(
+        currentLevel: 12,
+        currentXp: 0,
+        targetXp: 2000,
+        totalSchedules: 0,
+        completedSchedules: 0,
+        totalToday: 0,
+        completedToday: 0,
+        activeDaysThisWeek: 0,
+        currentStreak: 0,
+        completedMinutes: 0,
+        milestones: [],
+      );
+    }
+
+    final today = DateUtils.dateOnly(DateTime.now());
+    final weekStart = DateUtils.dateOnly(
+      today.subtract(Duration(days: today.weekday - 1)),
+    );
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final completedSchedules = state.schedules
+        .where((item) => item.isCompleted)
+        .toList();
+    final completedCount = completedSchedules.length;
+    final totalCount = state.schedules.length;
+    final completedToday = state.schedules
+        .where(
+          (item) =>
+              item.isCompleted && DateUtils.isSameDay(item.startAt, today),
+        )
+        .length;
+    final totalToday = state.schedules
+        .where((item) => DateUtils.isSameDay(item.startAt, today))
+        .length;
+    final activeDaysThisWeek = completedSchedules
+        .where(
+          (item) =>
+              !item.startAt.isBefore(weekStart) &&
+              item.startAt.isBefore(weekEnd),
+        )
+        .map((item) => DateUtils.dateOnly(item.startAt))
+        .toSet()
+        .length;
+    final completedMinutes = completedSchedules.fold<int>(
+      0,
+      (total, item) => total + item.endAt.difference(item.startAt).inMinutes,
+    );
+    final completedDays = completedSchedules
+        .map((item) => DateUtils.dateOnly(item.startAt))
+        .toSet();
+    var currentStreak = 0;
+    var cursor = today;
+    while (completedDays.contains(cursor)) {
+      currentStreak += 1;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+
+    return _AchievementSnapshot(
+      currentLevel: state.currentLevel,
+      currentXp: state.currentXp,
+      targetXp: state.targetXp,
+      totalSchedules: totalCount,
+      completedSchedules: completedCount,
+      totalToday: totalToday,
+      completedToday: completedToday,
+      activeDaysThisWeek: activeDaysThisWeek,
+      currentStreak: currentStreak,
+      completedMinutes: completedMinutes,
+      milestones: [
+        _AchievementMilestone(
+          order: 1,
+          title: 'Langkah pertama',
+          description: 'Selesaikan satu schedule pertamamu.',
+          tip: 'Tandai 1 task sampai selesai dari timeline harian.',
+          reward: 'Membuka jalur progres dan badge dasar.',
+          icon: Icons.flag_rounded,
+          accent: const Color(0xFF4F7FE8),
+          current: completedCount,
+          target: 1,
+          unit: 'schedule',
+        ),
+        _AchievementMilestone(
+          order: 2,
+          title: 'Masuk ritme',
+          description: 'Kumpulkan 120 menit task yang benar-benar selesai.',
+          tip: 'Gabungkan beberapa task pendek agar cepat menyentuh 2 jam.',
+          reward: 'Status konsisten dan peta progres tahap 2.',
+          icon: Icons.timer_rounded,
+          accent: const Color(0xFFF59E0B),
+          current: completedMinutes,
+          target: 120,
+          unit: 'menit',
+        ),
+        _AchievementMilestone(
+          order: 3,
+          title: 'Streak 3 hari',
+          description: 'Jaga ritme aktif tiga hari berturut-turut.',
+          tip: 'Selalu selesaikan minimal 1 task penting setiap hari.',
+          reward: 'Badge api dan reputasi konsisten.',
+          icon: Icons.local_fire_department_rounded,
+          accent: const Color(0xFFF97316),
+          current: currentStreak,
+          target: 3,
+          unit: 'hari',
+        ),
+        _AchievementMilestone(
+          order: 4,
+          title: 'Planner mingguan',
+          description: 'Aktif di lima hari dalam satu minggu.',
+          tip: 'Sebar task penting ke beberapa hari, jangan menumpuk.',
+          reward: 'Template mingguan terasa lebih bernilai.',
+          icon: Icons.calendar_month_rounded,
+          accent: const Color(0xFF14B8A6),
+          current: activeDaysThisWeek,
+          target: 5,
+          unit: 'hari aktif',
+        ),
+        _AchievementMilestone(
+          order: 5,
+          title: 'Eksekutor',
+          description: 'Selesaikan sepuluh schedule total.',
+          tip: 'Gunakan template agar task rutin lebih cepat diselesaikan.',
+          reward: 'Badge premium dan status eksekutor.',
+          icon: Icons.workspace_premium_rounded,
+          accent: const Color(0xFF7C3AED),
+          current: completedCount,
+          target: 10,
+          unit: 'schedule',
+        ),
+        _AchievementMilestone(
+          order: 6,
+          title: 'Naik level',
+          description: 'Isi XP hingga level berikutnya.',
+          tip: 'Pomodoro selesai dan task selesai sama-sama menambah XP.',
+          reward: 'Naik level ke explorer berikutnya.',
+          icon: Icons.auto_awesome_rounded,
+          accent: const Color(0xFF2563EB),
+          current: state.currentXp,
+          target: state.targetXp,
+          unit: 'XP',
+        ),
+      ],
+    );
+  }
+}
+
+class _AchievementMilestone {
+  const _AchievementMilestone({
+    required this.order,
+    required this.title,
+    required this.description,
+    required this.tip,
+    required this.reward,
+    required this.icon,
+    required this.accent,
+    required this.current,
+    required this.target,
+    required this.unit,
+  });
+
+  final int order;
+  final String title;
+  final String description;
+  final String tip;
+  final String reward;
+  final IconData icon;
+  final Color accent;
+  final int current;
+  final int target;
+  final String unit;
+
+  bool get unlocked => current >= target;
+
+  double get progress {
+    if (target <= 0) return 1;
+    return (current / target).clamp(0.0, 1.0);
+  }
+
+  int get stars {
+    if (unlocked) return 3;
+    if (progress >= 0.66) return 2;
+    if (progress > 0) return 1;
+    return 0;
+  }
+
+  String get progressLabel => '$current / $target $unit';
+}
+
+class _AndrewAchievementPage extends StatelessWidget {
+  const _AndrewAchievementPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<HomeStateSnapshot?>(
+      future: HomeStateStorage.load(),
+      builder: (context, state) {
+        final snapshot = _AchievementSnapshot.fromHomeState(state.data);
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFF2F7FF), Color(0xFFDCE7F5)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _AndrewSectionHeader(title: 'Prestasi', subtitle: ''),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Peta progress',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: _andrewInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tekan node untuk melihat syarat unlock, progres, dan reward tiap milestone.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  _AchievementMapSection(
+                    milestones: snapshot.milestones,
+                    onMilestoneTap: (milestone) =>
+                        _showAchievementMilestoneSheet(
+                          context: context,
+                          milestone: milestone,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+Future<void> _showAchievementMilestoneSheet({
+  required BuildContext context,
+  required _AchievementMilestone milestone,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          16 + MediaQuery.paddingOf(sheetContext).bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _appWhite,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF14213D).withValues(alpha: 0.16),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: milestone.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        milestone.unlocked
+                            ? milestone.icon
+                            : Icons.lock_rounded,
+                        color: milestone.accent,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            milestone.title,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
+                                  color: _andrewInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            milestone.unlocked
+                                ? 'Milestone sudah terbuka'
+                                : 'Milestone berikutnya masih terkunci',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: _matchaMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: milestone.progress,
+                    minHeight: 10,
+                    backgroundColor: const Color(0xFFE1EAF5),
+                    valueColor: AlwaysStoppedAnimation<Color>(milestone.accent),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  milestone.progressLabel,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: milestone.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _AchievementSheetLine(
+                  icon: Icons.flag_outlined,
+                  title: 'Target',
+                  body: milestone.description,
+                ),
+                const SizedBox(height: 12),
+                _AchievementSheetLine(
+                  icon: Icons.lightbulb_outline_rounded,
+                  title: 'Tips',
+                  body: milestone.tip,
+                ),
+                const SizedBox(height: 12),
+                _AchievementSheetLine(
+                  icon: Icons.card_giftcard_rounded,
+                  title: 'Reward',
+                  body: milestone.reward,
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: milestone.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: Text(
+                      milestone.unlocked ? 'Lanjutkan' : 'Siap, saya kejar',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+// ignore: unused_element
+class _AchievementBadgeData {
+  const _AchievementBadgeData({
+    required this.title,
+    required this.detail,
+    required this.icon,
+    required this.unlocked,
+    required this.accent,
+  });
+
+  final String title;
+  final String detail;
+  final IconData icon;
+  final bool unlocked;
+  final Color accent;
+}
+
+// ignore: unused_element
+class _AchievementHeroCard extends StatelessWidget {
+  const _AchievementHeroCard({
+    required this.level,
+    required this.currentXp,
+    required this.targetXp,
+    required this.xpProgress,
+    required this.streakDays,
+    required this.unlockedBadges,
+  });
+
+  final int level;
+  final int currentXp;
+  final int targetXp;
+  final double xpProgress;
+  final int streakDays;
+  final int unlockedBadges;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFF2F7FF), Color(0xFFDCE7F5)],
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F7FE8), Color(0xFF274976)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF274976).withValues(alpha: 0.20),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const _AndrewSectionHeader(
-                title: 'Mentor Andrew',
-                subtitle: 'Bicara langsung untuk menemukan langkah pertama.',
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.workspace_premium_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: const [
-                  _CoachPrompt(
-                    icon: Icons.play_arrow_rounded,
-                    label: 'Bantu mulai tugas',
-                  ),
-                  _CoachPrompt(
-                    icon: Icons.psychology_rounded,
-                    label: 'Redakan overthinking',
-                  ),
-                  _CoachPrompt(
-                    icon: Icons.lightbulb_rounded,
-                    label: 'Cari ide langkah kecil',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(width: 14),
               Expanded(
-                child: ListView(
-                  children: const [
-                    _CoachMessage(
-                      isAndrew: true,
-                      message:
-                          'Halo! Ceritakan tugas yang lagi kamu tunda. Kita pecah bareng-bareng.',
-                      time: '10:15',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Level $level Explorer',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    _CoachMessage(
-                      isAndrew: false,
-                      message:
-                          'Aku harus mulai skripsi tapi bingung langkah pertama.',
-                      time: '10:16',
-                    ),
-                    _CoachMessage(
-                      isAndrew: true,
-                      message:
-                          'Mulai dari 1 halaman: tulis tujuan riset + 3 pertanyaan utama.',
-                      time: '10:17',
-                    ),
-                    _CoachMessage(
-                      isAndrew: false,
-                      message: 'Oke, aku coba mulai 25 menit dulu.',
-                      time: '10:18',
+                    const SizedBox(height: 4),
+                    Text(
+                      '$unlockedBadges badge terbuka • streak $streakDays hari',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CoachMessage extends StatelessWidget {
-  const _CoachMessage({
-    required this.isAndrew,
-    required this.message,
-    required this.time,
-  });
-
-  final bool isAndrew;
-  final String message;
-  final String time;
-
-  @override
-  Widget build(BuildContext context) {
-    final alignment = isAndrew ? Alignment.centerLeft : Alignment.centerRight;
-    final background = isAndrew ? _appWhite : _andrewSoftTeal.withOpacity(0.8);
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(18),
-      topRight: const Radius.circular(18),
-      bottomLeft: Radius.circular(isAndrew ? 4 : 18),
-      bottomRight: Radius.circular(isAndrew ? 18 : 4),
-    );
-    return Align(
-      alignment: alignment,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: radius,
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14111827),
-              blurRadius: 12,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              message,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: _andrewInk),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              time,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: _matchaMuted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CoachPrompt extends StatelessWidget {
-  const _CoachPrompt({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: _appWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _matchaGold),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: _andrewTeal),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: _andrewInk,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '$currentXp / $targetXp XP',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(xpProgress * 100).round()}%',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: xpProgress,
+              minHeight: 10,
+              backgroundColor: Colors.white.withValues(alpha: 0.16),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _AchievementMetricCard extends StatelessWidget {
+  const _AchievementMetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _appWhite,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _matchaGold),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _matchaMist,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: _matchaDeep, size: 21),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: _matchaMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: _andrewInk,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: _matchaMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _AchievementFocusCard extends StatelessWidget {
+  const _AchievementFocusCard({
+    required this.activeDaysThisWeek,
+    required this.completionRate,
+  });
+
+  final int activeDaysThisWeek;
+  final int completionRate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _appWhite,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: _matchaGold),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _matchaMist,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.insights_rounded, color: _matchaDeep),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ritme minggu ini',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: _andrewInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$activeDaysThisWeek hari aktif • $completionRate% schedule selesai',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _AchievementBadgeTile extends StatelessWidget {
+  const _AchievementBadgeTile({required this.badge});
+
+  final _AchievementBadgeData badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = badge.unlocked ? badge.accent : const Color(0xFFB5C3D9);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: badge.unlocked ? _appWhite : const Color(0xFFF4F7FB),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: badge.unlocked
+              ? accent.withValues(alpha: 0.28)
+              : const Color(0xFFD7E1EF),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: badge.unlocked ? 0.14 : 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              badge.unlocked ? badge.icon : Icons.lock_rounded,
+              color: accent,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        badge.title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: _andrewInk,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(
+                          alpha: badge.unlocked ? 0.14 : 0.08,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badge.unlocked ? 'Terbuka' : 'Terkunci',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  badge.detail,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _AchievementJourneyHeader extends StatelessWidget {
+  const _AchievementJourneyHeader({
+    required this.snapshot,
+    required this.unlockedCount,
+    required this.nextMilestone,
+  });
+
+  final _AchievementSnapshot snapshot;
+  final int unlockedCount;
+  final _AchievementMilestone? nextMilestone;
+
+  @override
+  Widget build(BuildContext context) {
+    final xpProgress = snapshot.targetXp <= 0
+        ? 0.0
+        : (snapshot.currentXp / snapshot.targetXp).clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF5068B8), Color(0xFF9DA2B8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF3C486B).withValues(alpha: 0.22),
+            blurRadius: 26,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.map_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Journey Level ${snapshot.currentLevel}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$unlockedCount milestone terbuka • streak ${snapshot.currentStreak} hari',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '${snapshot.currentXp} / ${snapshot.targetXp} XP',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(xpProgress * 100).round()}%',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: xpProgress,
+              minHeight: 10,
+              backgroundColor: Colors.white.withValues(alpha: 0.16),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.navigation_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    nextMilestone == null
+                        ? 'Semua milestone utama sudah terbuka.'
+                        : 'Node berikutnya: ${nextMilestone!.title}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _AchievementNextMissionCard extends StatelessWidget {
+  const _AchievementNextMissionCard({required this.milestone});
+
+  final _AchievementMilestone? milestone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _appWhite,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: _matchaGold),
+      ),
+      child: milestone == null
+          ? Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _matchaMist,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.emoji_events_rounded,
+                    color: _matchaDeep,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    'Semua milestone utama sudah kamu buka. Saatnya pertahankan ritme ini.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: _andrewInk,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: milestone!.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Icon(
+                        milestone!.icon,
+                        color: milestone!.accent,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Misi berikutnya',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: _matchaMuted,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            milestone!.title,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: _andrewInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      milestone!.progressLabel,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: milestone!.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: milestone!.progress,
+                    minHeight: 8,
+                    backgroundColor: const Color(0xFFE1EAF5),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      milestone!.accent,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  milestone!.tip,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _AchievementMapSection extends StatelessWidget {
+  const _AchievementMapSection({
+    required this.milestones,
+    required this.onMilestoneTap,
+  });
+
+  final List<_AchievementMilestone> milestones;
+  final ValueChanged<_AchievementMilestone> onMilestoneTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        const sectionHeight = 860.0;
+        final positions = <Offset>[
+          Offset(width * 0.22, 120),
+          Offset(width * 0.68, 240),
+          Offset(width * 0.30, 390),
+          Offset(width * 0.76, 520),
+          Offset(width * 0.22, 670),
+          Offset(width * 0.68, 790),
+        ];
+        return SizedBox(
+          height: sectionHeight,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _AchievementMapPainter(
+                    positions: positions,
+                    milestones: milestones,
+                  ),
+                ),
+              ),
+              for (
+                var index = 0;
+                index < milestones.length && index < positions.length;
+                index++
+              )
+                Positioned(
+                  left: positions[index].dx - 58,
+                  top: positions[index].dy - 58,
+                  child: _AchievementMapNode(
+                    milestone: milestones[index],
+                    onTap: () => onMilestoneTap(milestones[index]),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AchievementMapPainter extends CustomPainter {
+  const _AchievementMapPainter({
+    required this.positions,
+    required this.milestones,
+  });
+
+  final List<Offset> positions;
+  final List<_AchievementMilestone> milestones;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final decorativePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = const Color(0xFFA9D4F1).withValues(alpha: 0.55);
+    final blobs = <Rect>[
+      Rect.fromCenter(
+        center: Offset(size.width * 0.18, 90),
+        width: 150,
+        height: 110,
+      ),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.80, 205),
+        width: 138,
+        height: 104,
+      ),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.25, 355),
+        width: 154,
+        height: 112,
+      ),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.74, 500),
+        width: 144,
+        height: 102,
+      ),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.26, 650),
+        width: 160,
+        height: 112,
+      ),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.72, 770),
+        width: 150,
+        height: 106,
+      ),
+    ];
+    for (final rect in blobs) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(36)),
+        decorativePaint,
+      );
+    }
+
+    final pathPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 14
+      ..color = Colors.white.withValues(alpha: 0.78);
+    final unlockedPathPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 14
+      ..color = const Color(0xFFC7D8F4);
+
+    final path = Path()..moveTo(positions.first.dx, positions.first.dy);
+    for (var i = 1; i < positions.length; i++) {
+      final previous = positions[i - 1];
+      final current = positions[i];
+      final midY = (previous.dy + current.dy) / 2;
+      path.cubicTo(previous.dx, midY, current.dx, midY, current.dx, current.dy);
+    }
+    canvas.drawPath(path, pathPaint);
+
+    final unlockedCount = milestones.where((item) => item.unlocked).length;
+    if (unlockedCount > 0) {
+      final highlighted = Path()
+        ..moveTo(positions.first.dx, positions.first.dy);
+      final endIndex = unlockedCount.clamp(1, positions.length) - 1;
+      for (var i = 1; i <= endIndex; i++) {
+        final previous = positions[i - 1];
+        final current = positions[i];
+        final midY = (previous.dy + current.dy) / 2;
+        highlighted.cubicTo(
+          previous.dx,
+          midY,
+          current.dx,
+          midY,
+          current.dx,
+          current.dy,
+        );
+      }
+      canvas.drawPath(highlighted, unlockedPathPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AchievementMapPainter oldDelegate) {
+    return oldDelegate.positions != positions ||
+        oldDelegate.milestones != milestones;
+  }
+}
+
+class _AchievementMapNode extends StatelessWidget {
+  const _AchievementMapNode({required this.milestone, required this.onTap});
+
+  final _AchievementMilestone milestone;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = milestone.unlocked
+        ? milestone.accent
+        : const Color(0xFF4B3F3F);
+    final fill = milestone.unlocked
+        ? const Color(0xFFCFE6FB)
+        : const Color(0xFFF3F5FA);
+    final starColor = milestone.unlocked
+        ? const Color(0xFFFFC36D)
+        : const Color(0xFFE5E7EB);
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 116,
+        child: Column(
+          children: [
+            Container(
+              width: 102,
+              height: 102,
+              decoration: BoxDecoration(
+                color: fill,
+                shape: BoxShape.circle,
+                border: Border.all(color: accent, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: milestone.accent.withValues(alpha: 0.14),
+                    blurRadius: 20,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: milestone.unlocked
+                    ? Text(
+                        '${milestone.order}',
+                        style: Theme.of(context).textTheme.displaySmall
+                            ?.copyWith(
+                              color: _andrewInk,
+                              fontWeight: FontWeight.w500,
+                            ),
+                      )
+                    : Icon(Icons.lock_rounded, color: accent, size: 34),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(3, (index) {
+                final filled = index < milestone.stars;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Icon(
+                    filled ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 22,
+                    color: filled ? starColor : const Color(0xFFBFC9D8),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              milestone.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: _andrewInk,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AchievementSheetLine extends StatelessWidget {
+  const _AchievementSheetLine({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: _matchaMist,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: _matchaDeep, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: _andrewInk,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                body,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: _matchaMuted),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3990,10 +5203,7 @@ class _AndrewProfilePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
-              _AndrewSectionHeader(
-                title: 'Profil',
-                subtitle: 'Kelola identitas, progres, dan preferensi akunmu.',
-              ),
+              _AndrewSectionHeader(title: 'Profil', subtitle: ''),
               SizedBox(height: 18),
               _ProfileHeroCard(),
               SizedBox(height: 16),

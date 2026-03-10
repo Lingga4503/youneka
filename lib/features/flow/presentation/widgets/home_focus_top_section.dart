@@ -15,6 +15,10 @@ class HomeFocusTopSection extends StatelessWidget {
     required this.sessionProgresses,
     required this.onNotificationTap,
     required this.onSettingsTap,
+    required this.onToggleAutoStartTap,
+    required this.onResetPomodoroTap,
+    required this.settingsSummary,
+    required this.autoStartEnabled,
     required this.onPlayTap,
     required this.onPlayLongPress,
     required this.playIcon,
@@ -33,6 +37,10 @@ class HomeFocusTopSection extends StatelessWidget {
   final List<double> sessionProgresses;
   final VoidCallback onNotificationTap;
   final VoidCallback onSettingsTap;
+  final VoidCallback onToggleAutoStartTap;
+  final VoidCallback onResetPomodoroTap;
+  final String settingsSummary;
+  final bool autoStartEnabled;
   final VoidCallback onPlayTap;
   final VoidCallback onPlayLongPress;
   final IconData playIcon;
@@ -99,14 +107,63 @@ class HomeFocusTopSection extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 30, height: 30),
             ),
-            IconButton(
-              onPressed: onSettingsTap,
-              icon: const Icon(Icons.settings_outlined),
-              color: const Color(0xFF4C648A),
-              iconSize: 22,
-              visualDensity: VisualDensity.compact,
+            PopupMenuButton<_HomeSettingsMenuAction>(
+              tooltip: 'Pengaturan',
+              onSelected: (value) {
+                switch (value) {
+                  case _HomeSettingsMenuAction.openSettings:
+                    onSettingsTap();
+                  case _HomeSettingsMenuAction.toggleAutoStart:
+                    onToggleAutoStartTap();
+                  case _HomeSettingsMenuAction.resetPomodoro:
+                    onResetPomodoroTap();
+                }
+              },
+              color: const Color(0xFFFCFEFF),
+              surfaceTintColor: Colors.transparent,
+              elevation: 10,
+              offset: const Offset(0, 34),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: Color(0xFFDCE5F2)),
+              ),
+              constraints: const BoxConstraints(minWidth: 230),
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+              icon: const Icon(Icons.settings_outlined),
+              iconColor: const Color(0xFF4C648A),
+              iconSize: 22,
+              itemBuilder: (context) => [
+                PopupMenuItem<_HomeSettingsMenuAction>(
+                  value: _HomeSettingsMenuAction.openSettings,
+                  child: _SettingsMenuTile(
+                    icon: Icons.tune_rounded,
+                    title: 'Pengaturan fokus',
+                    subtitle: settingsSummary,
+                  ),
+                ),
+                PopupMenuItem<_HomeSettingsMenuAction>(
+                  value: _HomeSettingsMenuAction.toggleAutoStart,
+                  child: _SettingsMenuTile(
+                    icon: autoStartEnabled
+                        ? Icons.play_circle_fill_rounded
+                        : Icons.pause_circle_outline_rounded,
+                    title: autoStartEnabled
+                        ? 'Matikan auto-start'
+                        : 'Aktifkan auto-start',
+                    subtitle: autoStartEnabled
+                        ? 'Sesi berikutnya jalan otomatis'
+                        : 'Mulai manual setelah sesi selesai',
+                  ),
+                ),
+                PopupMenuItem<_HomeSettingsMenuAction>(
+                  value: _HomeSettingsMenuAction.resetPomodoro,
+                  child: const _SettingsMenuTile(
+                    icon: Icons.restart_alt_rounded,
+                    title: 'Reset pomodoro',
+                    subtitle: 'Kembali ke sesi awal',
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -264,6 +321,58 @@ class HomeFocusTopSection extends StatelessWidget {
                       child: Icon(playIcon, color: accent, size: 17),
                     ),
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum _HomeSettingsMenuAction { openSettings, toggleAutoStart, resetPomodoro }
+
+class _SettingsMenuTile extends StatelessWidget {
+  const _SettingsMenuTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, color: const Color(0xFF304867), size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFF182740),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Color(0xFF7B90AF),
+                  fontSize: 11.5,
+                  height: 1.25,
                 ),
               ),
             ],

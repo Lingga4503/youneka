@@ -24,13 +24,8 @@ class TemplateLibraryStorage {
       return decoded
           .whereType<Map>()
           .map(
-            (item) => PlanTemplatePreset(
-              id: '${item['id'] ?? ''}',
-              title: '${item['title'] ?? ''}',
-              durationMinutes:
-                  (item['duration_minutes'] as num?)?.toInt() ?? 25,
-              note: '${item['note'] ?? ''}',
-            ),
+            (item) =>
+                PlanTemplatePreset.fromMap(Map<String, dynamic>.from(item)),
           )
           .where((item) => item.id.isNotEmpty && item.title.trim().isNotEmpty)
           .toList();
@@ -43,18 +38,7 @@ class TemplateLibraryStorage {
     List<PlanTemplatePreset> templates,
   ) async {
     final prefs = await _instance();
-    final raw = jsonEncode(
-      templates
-          .map(
-            (item) => <String, dynamic>{
-              'id': item.id,
-              'title': item.title,
-              'duration_minutes': item.durationMinutes,
-              'note': item.note,
-            },
-          )
-          .toList(),
-    );
+    final raw = jsonEncode(templates.map((item) => item.toMap()).toList());
     await prefs.setString(_customTemplatesKey, raw);
   }
 }
