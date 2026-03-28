@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "403560215255",
+    "project_id": "youneka-e496c",
+    "storage_bucket": "youneka-e496c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:403560215255:android:47e83be34755d2f6c6f692",
+        "android_client_info": {
+          "package_name": "com.vigioapps.youneka"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "403560215255-0u9jlrcdaoap06lurb1epbd803hk3o0s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vigioapps.youneka",
+            "certificate_hash": "b90675f1d0dd2002415144b1263c9d8e841b703f"
+          }
+        },
+        {
+          "client_id": "403560215255-382c7kf4kqmmfsco38adsd4asuiom01n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCT1O5bsguHzZkOBx3Y6TkKxi1-dlm1_xg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "403560215255-382c7kf4kqmmfsco38adsd4asuiom01n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

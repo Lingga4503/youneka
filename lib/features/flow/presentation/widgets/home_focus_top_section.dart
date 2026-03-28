@@ -5,6 +5,7 @@ class HomeFocusTopSection extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    required this.onProfileTap,
     required this.currentXp,
     required this.targetXp,
     required this.progress,
@@ -27,6 +28,7 @@ class HomeFocusTopSection extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final VoidCallback onProfileTap;
   final int currentXp;
   final int targetXp;
   final double progress;
@@ -63,39 +65,120 @@ class HomeFocusTopSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF4FB),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFBFD0EA)),
-              ),
-              child: const Icon(
-                Icons.account_circle_rounded,
-                color: accent,
-                size: 29,
-              ),
-            ),
-            const SizedBox(width: 8),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: ink,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onProfileTap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF4FB),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFFBFD0EA),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.account_circle_rounded,
+                                color: accent,
+                                size: 29,
+                              ),
+                            ),
+                            Positioned(
+                              right: -4,
+                              bottom: -4,
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: accent,
+                                  borderRadius: BorderRadius.circular(11),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x220F172A),
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.edit_rounded,
+                                  color: Colors.white,
+                                  size: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: ink,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 17,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEAF1FE),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: const Color(0xFFD4E0F5),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.edit_rounded,
+                                      color: accent,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: muted,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: muted, fontSize: 13),
-                  ),
-                ],
+                ),
               ),
             ),
             IconButton(

@@ -34,13 +34,8 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
   late final PageController _pageController;
 
   static const List<_ShellDestination> _destinations = [
-    _ShellDestination(label: 'Beranda', icon: Icons.home_rounded),
-    _ShellDestination(
-      label: 'Template',
-      icon: Icons.dashboard_customize_rounded,
-    ),
-    _ShellDestination(label: 'Prestasi', icon: Icons.workspace_premium_rounded),
-    _ShellDestination(label: 'Profil', icon: Icons.person_rounded),
+    _ShellDestination(label: 'Home', icon: Icons.home_rounded),
+    _ShellDestination(label: 'Goals', icon: Icons.workspace_premium_rounded),
   ];
 
   @override
@@ -169,97 +164,92 @@ class _YounekaHomeShellState extends State<YounekaHomeShell> {
     const mentorOverlap = 18.0;
 
     return Scaffold(
-      backgroundColor: _shellSurface,
-      extendBody: true,
-      body: PageView.builder(
-        controller: _pageController,
-        onPageChanged: _handlePageChanged,
-        physics: const BouncingScrollPhysics(),
-        itemCount: widget.pages.length,
-        itemBuilder: (context, index) {
-          final isLoaded = _loadedTabs[index];
-          final isActive = _selectedIndex == index;
-          if (!isLoaded && !isActive) {
-            return const SizedBox.shrink();
-          }
-          return TickerMode(enabled: isActive, child: widget.pages[index]);
-        },
-      ),
-      bottomNavigationBar: SizedBox(
-        height: navBarHeight + bottomInset,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            Positioned.fill(
-              child: ClipPath(
-                clipper: const _BottomBarClipper(),
-                child: Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.fromLTRB(20, 10, 20, 8 + bottomInset),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _BottomNavItem(
-                          destination: _destinations[0],
-                          selected: _selectedIndex == 0,
-                          onTap: () => _onTabTap(0),
-                        ),
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // ── Pages ──────────────────────────────────────────────────────────
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: _handlePageChanged,
+            physics: const BouncingScrollPhysics(),
+            itemCount: widget.pages.length,
+            itemBuilder: (context, index) {
+              final isLoaded = _loadedTabs[index];
+              final isActive = _selectedIndex == index;
+              if (!isLoaded && !isActive) return const SizedBox.shrink();
+              return TickerMode(enabled: isActive, child: widget.pages[index]);
+            },
+          ),
+
+          // ── Bottom navbar overlay ─────────────────────────────────────────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: navBarHeight + bottomInset,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.bottomCenter,
+              children: [
+                Positioned.fill(
+                  child: ClipPath(
+                    clipper: const _BottomBarClipper(),
+                    child: Container(
+                      color: Colors.white,
+                      padding:
+                          EdgeInsets.fromLTRB(20, 10, 20, 8 + bottomInset),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _BottomNavItem(
+                              destination: _destinations[0],
+                              selected: _selectedIndex == 0,
+                              onTap: () => _onTabTap(0),
+                            ),
+                          ),
+                          Expanded(
+                            child: _BottomNavItem(
+                              destination: _destinations[1],
+                              selected: _selectedIndex == 1,
+                              onTap: () => _onTabTap(1),
+                            ),
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: _BottomNavItem(
-                          destination: _destinations[1],
-                          selected: _selectedIndex == 1,
-                          onTap: () => _onTabTap(1),
-                        ),
-                      ),
-                      const SizedBox(width: 86),
-                      Expanded(
-                        child: _BottomNavItem(
-                          destination: _destinations[2],
-                          selected: _selectedIndex == 2,
-                          onTap: () => _onTabTap(2),
-                        ),
-                      ),
-                      Expanded(
-                        child: _BottomNavItem(
-                          destination: _destinations[3],
-                          selected: _selectedIndex == 3,
-                          onTap: () => _onTabTap(3),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: -mentorOverlap,
-              child: GestureDetector(
-                onTap: widget.onMentorTap,
-                onLongPress: _openQuickActions,
-                child: Container(
-                  width: mentorButtonSize,
-                  height: mentorButtonSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [_shellAccent, _shellAccentDeep],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
                     ),
-                    border: Border.all(color: Colors.white, width: 4),
-                  ),
-                  child: const Icon(
-                    Icons.support_agent_rounded,
-                    color: Colors.white,
-                    size: 28,
                   ),
                 ),
-              ),
+                // Mentor button floating di atas navbar
+                Positioned(
+                  top: -mentorOverlap,
+                  child: GestureDetector(
+                    onTap: widget.onMentorTap,
+                    onLongPress: _openQuickActions,
+                    child: Container(
+                      width: mentorButtonSize,
+                      height: mentorButtonSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [_shellAccent, _shellAccentDeep],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        border: Border.all(color: Colors.white, width: 4),
+                      ),
+                      child: const Icon(
+                        Icons.support_agent_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
