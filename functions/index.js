@@ -1,6 +1,7 @@
 const admin = require("firebase-admin");
 const {onRequest, HttpsError} = require("firebase-functions/v2/https");
 const {setGlobalOptions} = require("firebase-functions/v2");
+const {buildMentorReply} = require("./mentorRules");
 
 admin.initializeApp();
 setGlobalOptions({
@@ -11,89 +12,25 @@ setGlobalOptions({
 const db = admin.firestore();
 
 const JAKARTA_TIME_ZONE = "Asia/Jakarta";
-const FREE_DAILY_LIMIT = 10;
-const PREMIUM_MONTHLY_LIMIT = 500;
-const MENTOR_MODEL = process.env.MENTOR_AI_MODEL || "gemini-2.5-flash";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const GOOGLE_PLAY_PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || "";
 const GOOGLE_PLAY_SERVICE_ACCOUNT_JSON =
   process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || "";
-
-const SYSTEM_PROMPT = `
-Kamu adalah Andrew, mentor anti-prokrastinasi untuk anak muda Indonesia.
-Kepribadianmu: hangat, energik, to-the-point, kadang pakai humor ringan.
-Kamu membantu user:
-- Memecah tugas besar jadi langkah kecil yang bisa langsung dikerjakan
-- Mengatasi rasa malas dan prokrastinasi dengan teknik seperti Pomodoro dan time-blocking
-- Memberikan motivasi yang spesifik dan realistis
-- Memonitor jadwal dan target belajar
-
-Aturan respons:
-- Jawab dalam Bahasa Indonesia yang casual dan ramah
-- Respons singkat dan langsung, maksimal 4 kalimat
-- Kalau user stuck, kasih 1 langkah konkret yang bisa dilakukan sekarang
-- Jangan panjang lebar kecuali diminta menjelaskan detail
-- Panggil user dengan "kamu"
-`.trim();
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
 
 exports.mentorChatSend = onRequest({invoker: "public", cors: true}, async (req, res) => {
-  await handleAuthedJsonRequest(req, res, async ({uid, data}) => {
-    if (!GEMINI_API_KEY) {
-      throw new HttpsError("failed-precondition", "GEMINI_API_KEY belum diset.");
-    }
-
+  await handleAuthedJsonRequest(req, res, async ({data}) => {
     const message = (data.message || "").toString().trim();
-    const rawHistory = Array.isArray(data.history) ? data.history : [];
     if (!message) {
       throw new HttpsError("invalid-argument", "Pesan tidak boleh kosong.");
     }
 
-    const initialQuota = await getQuotaStatus(uid);
-    if (initialQuota.remaining <= 0) {
-      throwQuotaError(initialQuota);
-    }
-
-    const history = rawHistory
-        .slice(-8)
-        .map((entry) => ({
-          role: entry?.role === "model" ? "model" : "user",
-          text: (entry?.text || "").toString().trim(),
-        }))
-        .filter((entry) => entry.text);
-
-    const reply = await generateMentorReply(history, message);
-    const updatedQuota = await db.runTransaction(async (transaction) => {
-      const latestQuota = await getQuotaStatus(uid, transaction);
-      if (latestQuota.remaining <= 0) {
-        throwQuotaError(latestQuota);
-      }
-
-      const usageRef = getUsageDocRef(uid, latestQuota.plan, latestQuota.now);
-      transaction.set(usageRef, {
-        chatCount: admin.firestore.FieldValue.increment(1),
-        lastRequestAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
-
-      const userRef = db.collection("users").doc(uid);
-      transaction.set(userRef, {
-        plan: latestQuota.plan,
-        premiumStatus: latestQuota.premiumStatus,
-        billingProvider: latestQuota.plan === "premium" ? "google_play" : "none",
-        timezone: JAKARTA_TIME_ZONE,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
-
-      return {
-        ...latestQuota,
-        used: latestQuota.used + 1,
-        remaining: Math.max(0, latestQuota.remaining - 1),
-      };
-    });
-
+    const result = buildMentorReply(message);
     return {
-      reply,
-      quota: serializeQuota(updatedQuota),
+      reply: result.reply,
+      toolCall: result.toolCall,
     };
   });
 });
@@ -151,6 +88,83 @@ exports.restorePremiumSubscription = onRequest(
           ok: true,
           premiumUntil: verification.expiryTime,
           status: verification.premiumStatus,
+        };
+      });
+    },
+);
+
+exports.sendAdminAnnouncement = onRequest(
+    {invoker: "public", cors: true},
+    async (req, res) => {
+      await handleAuthedJsonRequest(req, res, async ({auth, data}) => {
+        assertAdminAccess(auth);
+
+        const title = (data.title || "").toString().trim();
+        const body = (data.body || "").toString().trim();
+        const targetType = (data.targetType || "email").toString().trim();
+        const email = (data.email || "").toString().trim().toLowerCase();
+
+        if (!title || !body) {
+          throw new HttpsError(
+              "invalid-argument",
+              "Judul dan isi pesan wajib diisi.",
+          );
+        }
+        if (title.length > 80) {
+          throw new HttpsError(
+              "invalid-argument",
+              "Judul pesan maksimal 80 karakter.",
+          );
+        }
+        if (body.length > 500) {
+          throw new HttpsError(
+              "invalid-argument",
+              "Isi pesan maksimal 500 karakter.",
+          );
+        }
+
+        let targetUserIds = [];
+        let targetLabel = "";
+        if (targetType === "all") {
+          targetUserIds = await listAllUserIds();
+          targetLabel = "all";
+        } else if (targetType === "email") {
+          if (!email) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Email target wajib diisi.",
+            );
+          }
+          const user = await admin.auth().getUserByEmail(email);
+          targetUserIds = [user.uid];
+          targetLabel = email;
+        } else {
+          throw new HttpsError(
+              "invalid-argument",
+              "Target pesan tidak dikenali.",
+          );
+        }
+
+        if (targetUserIds.length === 0) {
+          throw new HttpsError(
+              "failed-precondition",
+              "Tidak ada user yang bisa dikirimi pesan.",
+          );
+        }
+
+        await writeAnnouncementNotifications({
+          userIds: targetUserIds,
+          title,
+          body,
+          createdBy: auth.token.email || auth.uid,
+          audience: targetType,
+        });
+
+        return {
+          ok: true,
+          sentCount: targetUserIds.length,
+          targetType,
+          targetLabel,
         };
       });
     },
@@ -227,6 +241,16 @@ async function maybeVerifyAppCheck(req) {
   }
 }
 
+function assertAdminAccess(auth) {
+  const email = (auth?.token?.email || "").toString().trim().toLowerCase();
+  if (!email || !ADMIN_EMAILS.includes(email)) {
+    throw new HttpsError(
+        "permission-denied",
+        "Akun ini tidak punya akses admin broadcast.",
+    );
+  }
+}
+
 function handleHttpError(res, error) {
   if (error instanceof HttpsError) {
     const status = httpsErrorStatus(error.code);
@@ -290,51 +314,43 @@ function sanitizeDetails(details) {
   }
 }
 
-async function generateMentorReply(history, latestMessage) {
-  const contents = [
-    ...history.map((entry) => ({
-      role: entry.role,
-      parts: [{text: entry.text}],
-    })),
-    {
-      role: "user",
-      parts: [{text: latestMessage}],
-    },
-  ];
+async function listAllUserIds() {
+  let pageToken;
+  const userIds = [];
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    userIds.push(...page.users.map((user) => user.uid));
+    pageToken = page.pageToken;
+  } while (pageToken);
+  return userIds;
+}
 
-  const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MENTOR_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{text: SYSTEM_PROMPT}],
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.82,
-            maxOutputTokens: 320,
-          },
-        }),
-      },
-  );
-
-  if (!response.ok) {
-    const payload = await response.text();
-    throw new HttpsError(
-        "internal",
-        `Gemini request gagal: ${response.status}`,
-        {payload},
-    );
+async function writeAnnouncementNotifications(input) {
+  const chunks = [];
+  for (let index = 0; index < input.userIds.length; index += 400) {
+    chunks.push(input.userIds.slice(index, index + 400));
   }
 
-  const json = await response.json();
-  const reply = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (!reply) {
-    throw new HttpsError("internal", "Gemini tidak mengembalikan teks.");
+  for (const chunk of chunks) {
+    const batch = db.batch();
+    for (const uid of chunk) {
+      const ref = db.collection("users")
+          .doc(uid)
+          .collection("notifications")
+          .doc();
+      batch.set(ref, {
+        id: ref.id,
+        title: input.title,
+        body: input.body,
+        isRead: false,
+        source: "admin",
+        audience: input.audience,
+        createdBy: input.createdBy,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
-  return reply;
 }
 
 async function persistSubscription(uid, input) {
@@ -416,118 +432,5 @@ async function verifyGooglePlaySubscription(purchaseToken) {
     isPremium: premiumStatus === "active" || premiumStatus === "grace",
     startTime: lineItem.startTime || null,
     expiryTime: lineItem.expiryTime || new Date().toISOString(),
-  };
-}
-
-function throwQuotaError(quota) {
-  throw new HttpsError(
-      "resource-exhausted",
-      "Kuota AI habis.",
-      {
-        reason: "quota-exhausted",
-        ...serializeQuota(quota),
-      },
-  );
-}
-
-async function getQuotaStatus(uid, transaction = null) {
-  const now = new Date();
-  const jakarta = getJakartaParts(now);
-  const userRef = db.collection("users").doc(uid);
-  const userSnap = transaction ?
-    await transaction.get(userRef) :
-    await userRef.get();
-  const userData = userSnap.data() || {};
-
-  let plan = userData.plan === "premium" ? "premium" : "free";
-  let premiumStatus = normalizePremiumStatus(userData.premiumStatus);
-  const premiumUntil = userData.premiumUntil?.toDate ?
-    userData.premiumUntil.toDate() :
-    userData.premiumUntil ? new Date(userData.premiumUntil) : null;
-
-  if (plan === "premium" && premiumUntil && premiumUntil <= now) {
-    plan = "free";
-    premiumStatus = "expired";
-  }
-
-  const usageRef = getUsageDocRef(uid, plan, jakarta);
-  const usageSnap = transaction ?
-    await transaction.get(usageRef) :
-    await usageRef.get();
-  const used = usageSnap.data()?.chatCount || 0;
-  const limit = plan === "premium" ? PREMIUM_MONTHLY_LIMIT : FREE_DAILY_LIMIT;
-  const remaining = Math.max(0, limit - used);
-  const resetAt = plan === "premium" ?
-    buildJakartaDateUtc(jakarta.year, jakarta.month + 1, 1, 0, 0) :
-    buildJakartaDateUtc(jakarta.year, jakarta.month, jakarta.day + 1, 0, 0);
-
-  return {
-    now,
-    plan,
-    premiumStatus,
-    premiumUntil,
-    used,
-    limit,
-    remaining,
-    resetAt,
-  };
-}
-
-function getUsageDocRef(uid, plan, jakarta) {
-  const usageCollection = db.collection("users").doc(uid).collection("usage");
-  const month = String(jakarta.month).padStart(2, "0");
-  const day = String(jakarta.day).padStart(2, "0");
-  if (plan === "premium") {
-    return usageCollection.doc(`monthly_${jakarta.year}${month}`);
-  }
-  return usageCollection.doc(`daily_${jakarta.year}${month}${day}`);
-}
-
-function getJakartaParts(date) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: JAKARTA_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = Object.fromEntries(
-      formatter.formatToParts(date)
-          .filter((part) => part.type !== "literal")
-          .map((part) => [part.type, part.value]),
-  );
-  return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-    second: Number(parts.second),
-  };
-}
-
-function buildJakartaDateUtc(year, month, day, hour, minute) {
-  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0));
-}
-
-function normalizePremiumStatus(raw) {
-  if (raw === "active" || raw === "grace" || raw === "expired") {
-    return raw;
-  }
-  return "inactive";
-}
-
-function serializeQuota(quota) {
-  return {
-    plan: quota.plan,
-    premiumStatus: quota.premiumStatus,
-    limit: quota.limit,
-    used: quota.used,
-    remaining: quota.remaining,
-    resetAt: quota.resetAt.toISOString(),
-    premiumUntil: quota.premiumUntil ? quota.premiumUntil.toISOString() : null,
   };
 }

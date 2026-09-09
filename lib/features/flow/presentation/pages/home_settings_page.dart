@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../mentor/data/mentor_access_service.dart';
+import '../../../../core/services/app_locale_service.dart';
+import '../../../../core/services/user_profile_service.dart';
 import '../../domain/models/home_models.dart';
 
 class HomeSettingsPage extends StatefulWidget {
@@ -15,7 +16,6 @@ class HomeSettingsPage extends StatefulWidget {
 class _HomeSettingsPageState extends State<HomeSettingsPage> {
   late int _pomodoroMinutes;
   late int _sessionsPerRound;
-  late int _xpPerPomodoro;
   late bool _autoStartNextSession;
 
   @override
@@ -23,7 +23,6 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
     super.initState();
     _pomodoroMinutes = widget.initialSettings.pomodoroMinutes;
     _sessionsPerRound = widget.initialSettings.sessionsPerRound;
-    _xpPerPomodoro = widget.initialSettings.xpPerPomodoro;
     _autoStartNextSession = widget.initialSettings.autoStartNextSession;
   }
 
@@ -32,8 +31,86 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
       HomeSettings(
         pomodoroMinutes: _pomodoroMinutes,
         sessionsPerRound: _sessionsPerRound,
-        xpPerPomodoro: _xpPerPomodoro,
         autoStartNextSession: _autoStartNextSession,
+      ),
+    );
+  }
+
+  Future<void> _showLanguagePicker() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final currentCode = AppLocaleService.localeNotifier.value.languageCode;
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4DCE8),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Pilih Bahasa',
+                  style: TextStyle(
+                    color: Color(0xFF1A2B47),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Bahasa aplikasi akan langsung berubah.',
+                  style: TextStyle(
+                    color: Color(0xFF7389AB),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _LanguageOptionTile(
+                  title: 'Bahasa Indonesia',
+                  subtitle: 'Gunakan tampilan bahasa Indonesia',
+                  languageCode: 'id',
+                  selected: currentCode == 'id',
+                  onTap: () => Navigator.of(sheetContext).pop('id'),
+                ),
+                _LanguageOptionTile(
+                  title: 'English',
+                  subtitle: 'Use the app in English',
+                  languageCode: 'en',
+                  selected: currentCode == 'en',
+                  onTap: () => Navigator.of(sheetContext).pop('en'),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected == null) return;
+    await AppLocaleService.setLocale(selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          selected == 'id'
+              ? 'Bahasa diubah ke Indonesia'
+              : 'Language changed to English',
+        ),
       ),
     );
   }
@@ -47,6 +124,19 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           const _AiMembershipCard(),
+          ValueListenableBuilder<Locale>(
+            valueListenable: AppLocaleService.localeNotifier,
+            builder: (context, locale, _) {
+              final isIndonesian = locale.languageCode == 'id';
+              return _ActionSettingCard(
+                title: 'Bahasa',
+                subtitle: 'Ganti bahasa aplikasi.',
+                trailingLabel: isIndonesian ? 'Indonesia' : 'English',
+                icon: Icons.language_rounded,
+                onTap: _showLanguagePicker,
+              );
+            },
+          ),
           _SettingCard(
             title: 'Durasi Pomodoro',
             subtitle: 'Durasi per sesi fokus.',
@@ -87,26 +177,6 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
               ),
             ),
           ),
-          _SettingCard(
-            title: 'XP per Pomodoro',
-            subtitle: 'Reward XP saat satu sesi selesai.',
-            trailing: Text(
-              '$_xpPerPomodoro XP',
-              style: const TextStyle(
-                color: Color(0xFF2B67D9),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            child: Slider(
-              min: 50,
-              max: 250,
-              divisions: 8,
-              value: _xpPerPomodoro.toDouble(),
-              onChanged: (value) {
-                setState(() => _xpPerPomodoro = value.round());
-              },
-            ),
-          ),
           SwitchListTile.adaptive(
             value: _autoStartNextSession,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
@@ -133,24 +203,160 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
   }
 }
 
-class _AiMembershipCard extends StatelessWidget {
-  const _AiMembershipCard();
+class _LanguageOptionTile extends StatelessWidget {
+  const _LanguageOptionTile({
+    required this.title,
+    required this.subtitle,
+    required this.languageCode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String languageCode;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final service = MentorAccessService.instance;
-    return ValueListenableBuilder<MentorAccessState>(
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEAF0FA) : const Color(0xFFF8FAFD),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? const Color(0xFF2B67D9) : const Color(0xFFD6E0EE),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFF2B67D9)
+                    : const Color(0xFFEAF0FA),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                languageCode.toUpperCase(),
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF2B67D9),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF1A2B47),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF7389AB),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.chevron_right_rounded,
+              color: selected
+                  ? const Color(0xFF2B67D9)
+                  : const Color(0xFF8BA0BE),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiMembershipCard extends StatelessWidget {
+  const _AiMembershipCard();
+
+  Future<void> _openRenameSheet(BuildContext context) async {
+    final service = UserProfileService.instance;
+    final controller = TextEditingController(
+      text: service.state.value.effectiveDisplayName,
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
+          child: Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Ubah nama pengguna',
+                    style: TextStyle(
+                      color: Color(0xFF1A2B47),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(controller: controller, autofocus: true),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () async {
+                        final navigator = Navigator.of(sheetContext);
+                        final ok = await service.saveDisplayName(
+                          controller.text,
+                        );
+                        if (ok) navigator.pop();
+                      },
+                      child: const Text('Simpan'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = UserProfileService.instance;
+    return ValueListenableBuilder<UserProfileState>(
       valueListenable: service.state,
       builder: (context, state, _) {
-        final quota = state.quota;
-        final quotaText = quota == null
-            ? 'Login Google untuk melihat paket dan kuota AI.'
-            : '${quota.planLabel} • ${quota.remaining}/${quota.limit} chat tersisa'
-                  '${quota.isPremium ? ' bulan ini' : ' hari ini'}';
-        final renewalText = quota?.premiumUntil == null
-            ? null
-            : 'Aktif sampai ${_formatDate(quota!.premiumUntil!)}';
-
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -164,12 +370,12 @@ class _AiMembershipCard extends StatelessWidget {
               const Row(
                 children: [
                   Icon(
-                    Icons.workspace_premium_rounded,
+                    Icons.account_circle_rounded,
                     color: Color(0xFFFFD77B),
                   ),
                   SizedBox(width: 10),
                   Text(
-                    'AI Membership',
+                    'Akun',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,
@@ -180,35 +386,13 @@ class _AiMembershipCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                state.isSignedIn ? state.effectiveDisplayName : 'Belum login',
+                state.effectiveDisplayName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
                 ),
               ),
-              if (state.isSignedIn) ...[
-                const SizedBox(height: 4),
-                Text(
-                  state.user?.email ?? '',
-                  style: const TextStyle(
-                    color: Color(0xFFD7E4F7),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 6),
-              Text(
-                quotaText,
-                style: const TextStyle(color: Color(0xFFD7E4F7), height: 1.35),
-              ),
-              if (renewalText != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  renewalText,
-                  style: const TextStyle(color: Color(0xFFD7E4F7)),
-                ),
-              ],
               if (state.notice != null) ...[
                 const SizedBox(height: 10),
                 Text(
@@ -220,75 +404,20 @@ class _AiMembershipCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (!state.isSignedIn)
-                    FilledButton.icon(
-                      onPressed: state.loading
-                          ? null
-                          : service.signInWithGoogle,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF2B67D9),
-                      ),
-                      icon: const Icon(Icons.login_rounded),
-                      label: const Text('Login Google'),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: state.loading ? null : service.signOut,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Color(0xFF8FA6C8)),
-                      ),
-                      icon: const Icon(Icons.logout_rounded),
-                      label: const Text('Logout'),
-                    ),
-                  FilledButton.icon(
-                    onPressed:
-                        state.isSignedIn &&
-                            !state.purchasePending &&
-                            state.canPurchase
-                        ? () async {
-                            await service.purchasePremium();
-                          }
-                        : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD77B),
-                      foregroundColor: const Color(0xFF16233A),
-                    ),
-                    icon: const Icon(Icons.workspace_premium_rounded),
-                    label: Text(
-                      state.premiumProduct?.price == null
-                          ? 'Premium Rp33k'
-                          : 'Premium ${state.premiumProduct!.price}',
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: state.purchasePending
-                        ? null
-                        : service.restorePurchases,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFD7E4F7),
-                    ),
-                    icon: const Icon(Icons.restore_rounded),
-                    label: const Text('Restore'),
-                  ),
-                ],
+              OutlinedButton.icon(
+                onPressed: () => _openRenameSheet(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFF8FA6C8)),
+                ),
+                icon: const Icon(Icons.edit_rounded),
+                label: const Text('Ubah nama'),
               ),
             ],
           ),
         );
       },
     );
-  }
-
-  String _formatDate(DateTime value) {
-    final day = value.day.toString().padLeft(2, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final year = value.year.toString();
-    return '$day/$month/$year';
   }
 }
 
@@ -348,6 +477,74 @@ class _SettingCard extends StatelessWidget {
           ),
           if (child != null) ...[const SizedBox(height: 2), child!],
         ],
+      ),
+    );
+  }
+}
+
+class _ActionSettingCard extends StatelessWidget {
+  const _ActionSettingCard({
+    required this.title,
+    required this.subtitle,
+    required this.trailingLabel,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String trailingLabel;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF0FA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD2DDEF)),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFDCE8FA),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: const Color(0xFF2B67D9)),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF1A2B47),
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: Color(0xFF7389AB), fontSize: 13),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              trailingLabel,
+              style: const TextStyle(
+                color: Color(0xFF2B67D9),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF8BA0BE)),
+          ],
+        ),
       ),
     );
   }

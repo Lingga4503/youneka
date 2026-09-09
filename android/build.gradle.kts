@@ -1,15 +1,3 @@
-buildscript {
-    repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.google.gms:google-services:4.4.2")
-    }
-}
-
 allprojects {
     repositories {
         maven { url = uri("https://maven.aliyun.com/repository/google") }

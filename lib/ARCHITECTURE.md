@@ -1,8 +1,8 @@
-# Youneka Structure (Phase 1)
+# Youneka Structure
 
 Tujuan refactor: mengurangi ketergantungan pada satu file `main.dart` agar lebih aman, cepat dirawat, dan mudah scaling.
 
-## Sudah Dipisah
+## Struktur saat ini
 
 - `lib/core/services/app_locale_service.dart`
   - Load/simpan locale app.
@@ -12,48 +12,16 @@ Tujuan refactor: mengurangi ketergantungan pada satu file `main.dart` agar lebih
   - Export data prefs ke file JSON.
   - Import data prefs dari file JSON.
 
-- `lib/features/shell/presentation/youneka_home_shell.dart`
-  - Shell utama (konten + sidebar kanan mission).
-  - Navigasi tab utama dan aksi menu sidebar.
+- `lib/core/services/user_profile_service.dart`
+  - Load/simpan nama pengguna (SharedPreferences).
+  - Menyediakan `ValueNotifier<UserProfileState>` global untuk UI (dipakai saat boot app, account sheet, dan Settings).
 
-- `lib/features/mentor/presentation/mentor_chat_popup_dialog.dart`
-  - Popup chat mentor AI.
-  - Overlay blur + gate unduh model Qwen offline.
-
-## Target Struktur Best Practice (Phase 2)
-
-```text
-lib/
-  app/
-    app.dart
-    theme/
-    router/
-  core/
-    services/
-    utils/
-    constants/
-  features/
-    home/
-      presentation/
-      domain/
-      data/
-    plan/
-      presentation/
-      domain/
-      data/
-    mentor/
-      presentation/
-      domain/
-      data/
-    mission/
-      presentation/
-      domain/
-      data/
-    pomodoro/
-      presentation/
-      domain/
-      data/
-```
+- `lib/features/flow/`
+  - Satu-satunya fitur utama app: halaman home immersive (timer pomodoro besar, kartu tugas, kontrol musik), detail tugas, notifikasi, dan pengaturan.
+  - `domain/models/home_models.dart` — model data (`HomeScheduleItem`, `HomeSettings`, `PomodoroRuntime`, dll).
+  - `data/home_state_storage.dart` — persistensi lokal (SharedPreferences) untuk seluruh state home.
+  - `presentation/widgets/` — widget-widget layar immersive (`HomeLofiBackground`, `HomeFloatingTimer`, `HomeCompactTaskCard`, `HomeMusicControl`, `HomeSceneTopIcons`, `HomeTaskListSection`).
+  - `presentation/pages/` — halaman terpisah (`home_settings_page.dart`, `home_notifications_page.dart`).
 
 ## Aturan Refactor Lanjutan
 

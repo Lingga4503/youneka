@@ -8,32 +8,27 @@ class HomeSettings {
   const HomeSettings({
     required this.pomodoroMinutes,
     required this.sessionsPerRound,
-    required this.xpPerPomodoro,
     required this.autoStartNextSession,
   });
 
   static const defaults = HomeSettings(
     pomodoroMinutes: 25,
     sessionsPerRound: 4,
-    xpPerPomodoro: 120,
     autoStartNextSession: false,
   );
 
   final int pomodoroMinutes;
   final int sessionsPerRound;
-  final int xpPerPomodoro;
   final bool autoStartNextSession;
 
   HomeSettings copyWith({
     int? pomodoroMinutes,
     int? sessionsPerRound,
-    int? xpPerPomodoro,
     bool? autoStartNextSession,
   }) {
     return HomeSettings(
       pomodoroMinutes: pomodoroMinutes ?? this.pomodoroMinutes,
       sessionsPerRound: sessionsPerRound ?? this.sessionsPerRound,
-      xpPerPomodoro: xpPerPomodoro ?? this.xpPerPomodoro,
       autoStartNextSession: autoStartNextSession ?? this.autoStartNextSession,
     );
   }
@@ -42,7 +37,6 @@ class HomeSettings {
     return {
       'pomodoro_minutes': pomodoroMinutes,
       'sessions_per_round': sessionsPerRound,
-      'xp_per_pomodoro': xpPerPomodoro,
       'auto_start_next_session': autoStartNextSession,
     };
   }
@@ -51,7 +45,6 @@ class HomeSettings {
     return HomeSettings(
       pomodoroMinutes: (map['pomodoro_minutes'] as num?)?.toInt() ?? 25,
       sessionsPerRound: (map['sessions_per_round'] as num?)?.toInt() ?? 4,
-      xpPerPomodoro: (map['xp_per_pomodoro'] as num?)?.toInt() ?? 120,
       autoStartNextSession: (map['auto_start_next_session'] as bool?) ?? false,
     );
   }
@@ -116,46 +109,38 @@ class HomeScheduleItem {
     required this.id,
     required this.title,
     required this.description,
-    required this.startAt,
-    required this.endAt,
+    this.startAt,
     required this.priority,
     required this.isCompleted,
-    required this.rewardedXp,
-    this.location,
+    this.pomodorosCompleted = 0,
   });
 
   final String id;
   final String title;
   final String description;
-  final DateTime startAt;
-  final DateTime endAt;
+  final DateTime? startAt;
   final SchedulePriority priority;
   final bool isCompleted;
-  final bool rewardedXp;
-  final String? location;
+  final int pomodorosCompleted;
 
   HomeScheduleItem copyWith({
     String? id,
     String? title,
     String? description,
     DateTime? startAt,
-    DateTime? endAt,
     SchedulePriority? priority,
     bool? isCompleted,
-    bool? rewardedXp,
-    String? location,
-    bool clearLocation = false,
+    int? pomodorosCompleted,
+    bool clearStartAt = false,
   }) {
     return HomeScheduleItem(
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
-      startAt: startAt ?? this.startAt,
-      endAt: endAt ?? this.endAt,
+      startAt: clearStartAt ? null : (startAt ?? this.startAt),
       priority: priority ?? this.priority,
       isCompleted: isCompleted ?? this.isCompleted,
-      rewardedXp: rewardedXp ?? this.rewardedXp,
-      location: clearLocation ? null : (location ?? this.location),
+      pomodorosCompleted: pomodorosCompleted ?? this.pomodorosCompleted,
     );
   }
 
@@ -164,12 +149,10 @@ class HomeScheduleItem {
       'id': id,
       'title': title,
       'description': description,
-      'start_at': startAt.toIso8601String(),
-      'end_at': endAt.toIso8601String(),
+      'start_at': startAt?.toIso8601String(),
       'priority': priority.name,
       'is_completed': isCompleted,
-      'rewarded_xp': rewardedXp,
-      'location': location,
+      'pomodoros_completed': pomodorosCompleted,
     };
   }
 
@@ -180,18 +163,13 @@ class HomeScheduleItem {
       id: map['id'] as String? ?? '',
       title: map['title'] as String? ?? '',
       description: map['description'] as String? ?? '',
-      startAt:
-          DateTime.tryParse(map['start_at'] as String? ?? '') ?? DateTime.now(),
-      endAt:
-          DateTime.tryParse(map['end_at'] as String? ?? '') ??
-          DateTime.now().add(const Duration(hours: 1)),
+      startAt: DateTime.tryParse(map['start_at'] as String? ?? ''),
       priority: SchedulePriority.values.firstWhere(
         (value) => value.name == priorityName,
         orElse: () => SchedulePriority.medium,
       ),
       isCompleted: (map['is_completed'] as bool?) ?? false,
-      rewardedXp: (map['rewarded_xp'] as bool?) ?? false,
-      location: map['location'] as String?,
+      pomodorosCompleted: (map['pomodoros_completed'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -204,6 +182,7 @@ class PomodoroRuntime {
     required this.completedSessions,
     required this.totalSessions,
     required this.lastUpdatedMs,
+    this.activeTaskId,
   });
 
   factory PomodoroRuntime.initial(HomeSettings settings) {
@@ -224,6 +203,7 @@ class PomodoroRuntime {
   final int completedSessions;
   final int totalSessions;
   final int lastUpdatedMs;
+  final String? activeTaskId;
 
   PomodoroRuntime copyWith({
     PomodoroPhase? phase,
@@ -232,6 +212,8 @@ class PomodoroRuntime {
     int? completedSessions,
     int? totalSessions,
     int? lastUpdatedMs,
+    String? activeTaskId,
+    bool clearActiveTaskId = false,
   }) {
     return PomodoroRuntime(
       phase: phase ?? this.phase,
@@ -240,6 +222,9 @@ class PomodoroRuntime {
       completedSessions: completedSessions ?? this.completedSessions,
       totalSessions: totalSessions ?? this.totalSessions,
       lastUpdatedMs: lastUpdatedMs ?? this.lastUpdatedMs,
+      activeTaskId: clearActiveTaskId
+          ? null
+          : (activeTaskId ?? this.activeTaskId),
     );
   }
 
@@ -251,6 +236,7 @@ class PomodoroRuntime {
       'completed_sessions': completedSessions,
       'total_sessions': totalSessions,
       'last_updated_ms': lastUpdatedMs,
+      'active_task_id': activeTaskId,
     };
   }
 
@@ -268,6 +254,7 @@ class PomodoroRuntime {
       lastUpdatedMs:
           (map['last_updated_ms'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
+      activeTaskId: map['active_task_id'] as String?,
     );
   }
 }
@@ -279,9 +266,6 @@ class HomeStateSnapshot {
     required this.pomodoro,
     required this.notifications,
     required this.schedules,
-    required this.currentLevel,
-    required this.currentXp,
-    required this.targetXp,
   });
 
   final DateTime selectedDate;
@@ -289,9 +273,6 @@ class HomeStateSnapshot {
   final PomodoroRuntime pomodoro;
   final List<HomeNotificationItem> notifications;
   final List<HomeScheduleItem> schedules;
-  final int currentLevel;
-  final int currentXp;
-  final int targetXp;
 
   HomeStateSnapshot copyWith({
     DateTime? selectedDate,
@@ -299,9 +280,6 @@ class HomeStateSnapshot {
     PomodoroRuntime? pomodoro,
     List<HomeNotificationItem>? notifications,
     List<HomeScheduleItem>? schedules,
-    int? currentLevel,
-    int? currentXp,
-    int? targetXp,
   }) {
     return HomeStateSnapshot(
       selectedDate: selectedDate ?? this.selectedDate,
@@ -309,9 +287,6 @@ class HomeStateSnapshot {
       pomodoro: pomodoro ?? this.pomodoro,
       notifications: notifications ?? this.notifications,
       schedules: schedules ?? this.schedules,
-      currentLevel: currentLevel ?? this.currentLevel,
-      currentXp: currentXp ?? this.currentXp,
-      targetXp: targetXp ?? this.targetXp,
     );
   }
 
@@ -322,9 +297,6 @@ class HomeStateSnapshot {
       'pomodoro': pomodoro.toMap(),
       'notifications': notifications.map((item) => item.toMap()).toList(),
       'schedules': schedules.map((item) => item.toMap()).toList(),
-      'current_level': currentLevel,
-      'current_xp': currentXp,
-      'target_xp': targetXp,
     };
   }
 
@@ -332,7 +304,25 @@ class HomeStateSnapshot {
     final settingsMap = map['settings'];
     final pomodoroMap = map['pomodoro'];
     final notificationsRaw = map['notifications'];
-    final schedulesRaw = map['schedules'];
+
+    List<HomeScheduleItem> parseItems(Object? raw) {
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((item) => HomeScheduleItem.fromMap(Map<String, dynamic>.from(item)))
+          .toList();
+    }
+
+    // Migrasi: gabungkan tiga list lama (schedules/kanban_notes/list_items)
+    // jadi satu, dedup by id, precedence schedules > kanban_notes > list_items.
+    final fromSchedules = parseItems(map['schedules']);
+    final fromKanban = parseItems(map['kanban_notes']);
+    final fromList = parseItems(map['list_items']);
+    final merged = <String, HomeScheduleItem>{};
+    for (final item in [...fromSchedules, ...fromKanban, ...fromList]) {
+      merged.putIfAbsent(item.id, () => item);
+    }
+
     return HomeStateSnapshot(
       selectedDate:
           DateTime.tryParse(map['selected_date'] as String? ?? '') ??
@@ -353,18 +343,7 @@ class HomeStateSnapshot {
                 )
                 .toList()
           : const [],
-      schedules: schedulesRaw is List
-          ? schedulesRaw
-                .whereType<Map>()
-                .map(
-                  (item) =>
-                      HomeScheduleItem.fromMap(Map<String, dynamic>.from(item)),
-                )
-                .toList()
-          : const [],
-      currentLevel: (map['current_level'] as num?)?.toInt() ?? 12,
-      currentXp: (map['current_xp'] as num?)?.toInt() ?? 1500,
-      targetXp: (map['target_xp'] as num?)?.toInt() ?? 2000,
+      schedules: merged.values.toList(),
     );
   }
 }

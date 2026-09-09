@@ -13,6 +13,7 @@ class HomeNotificationsPage extends StatefulWidget {
 
 class _HomeNotificationsPageState extends State<HomeNotificationsPage> {
   late List<HomeNotificationItem> _items;
+  bool _allowPop = false;
 
   @override
   void initState() {
@@ -32,12 +33,19 @@ class _HomeNotificationsPageState extends State<HomeNotificationsPage> {
     });
   }
 
+  void _closePage() {
+    if (_allowPop) return;
+    setState(() => _allowPop = true);
+    Navigator.of(context).pop(_items);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (_, __) {
-        Navigator.of(context).pop(_items);
+    return PopScope<List<HomeNotificationItem>>(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _closePage();
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6FB),
@@ -45,7 +53,7 @@ class _HomeNotificationsPageState extends State<HomeNotificationsPage> {
           title: const Text('Notifikasi'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => Navigator.of(context).pop(_items),
+            onPressed: _closePage,
           ),
           actions: [
             IconButton(
